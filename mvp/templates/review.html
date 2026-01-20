@@ -1,0 +1,506 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Review Projects - Analytical Method Validation MVP{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Projects Pending Review</h2>
+                    <small>As Reviewer, you verify data integrity, validate calculations, and ensure compliance</small>
+                </div>
+                <div class="card-body">
+                    <div id="projectsList" style="min-height: 200px;">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <span>Loading projects...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Project Review Modal -->
+<div id="reviewModal" class="modal">
+    <div class="modal-content large-modal">
+        <div class="modal-header">
+            <h2>Project Review: <span id="reviewProjectTitle"></span></h2>
+            <button class="modal-close" onclick="closeReviewModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="reviewContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <span>Loading project details...</span>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeReviewModal()">Close</button>
+            <button class="btn btn-success" onclick="submitFinalReview()" id="submitReviewBtn" disabled>Submit Final Review</button>
+        </div>
+    </div>
+</div>
+
+<!-- Parameter Review Modal -->
+<div id="parameterModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="parameterTitle">Parameter Review</h2>
+            <button class="modal-close" onclick="closeParameterModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="parameterContent"></div>
+            <div class="form-group">
+                <label>Review Decision *</label>
+                <select id="parameterDecision" onchange="onParameterDecisionChange()">
+                    <option value="">Select decision</option>
+                    <option value="approve">✅ Approve - Meets requirements</option>
+                    <option value="reject">❌ Reject - Does not meet requirements</option>
+                    <option value="correction">🔧 Request Correction - Minor issues</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Comments *</label>
+                <textarea id="parameterComments" rows="4" placeholder="Provide detailed review comments and justification..."></textarea>
+            </div>
+            <div id="deviationSection" style="display: none;">
+                <div class="alert alert-warning">
+                    <h4>Deviation Assessment</h4>
+                    <p>Failure requires deviation analysis:</p>
+                </div>
+                <div class="form-group">
+                    <label>Deviation Impact</label>
+                    <select id="deviationImpact">
+                        <option value="">Select impact</option>
+                        <option value="minor">Minor - No impact on method validity</option>
+                        <option value="major">Major - Requires re-validation</option>
+                        <option value="critical">Critical - Method invalid</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Recommended Action</label>
+                    <select id="recommendedAction">
+                        <option value="">Select action</option>
+                        <option value="accept">Accept deviation with conditions</option>
+                        <option value="rerun">Require re-analysis</option>
+                        <option value="escalate">Escalate to QA</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeParameterModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitParameterReview()">Submit Review</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentProject = null;
+    let parameterReviews = {};
+
+    async function loadProjects() {
+        try {
+            const { data: projects } = await api.getProjects();
+            const reviewProjects = projects.filter(p => p.status === 'review');
+
+            if (reviewProjects.length === 0) {
+                document.getElementById('projectsList').innerHTML = `
+                    <div class="alert alert-info">
+                        <h4>No Projects Pending Review</h4>
+                        <p>All projects have been reviewed or are still in validation phase.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="review-stats">
+                    <div class="stat-item">
+                        <span class="stat-number">${reviewProjects.length}</span>
+                        <span class="stat-label">Projects Awaiting Review</span>
+                    </div>
+                </div>
+                <table class="review-table">
+                    <thead>
+                        <tr>
+                            <th>Project Details</th>
+                            <th>Validation Status</th>
+                            <th>Priority</th>
+                            <th>Submitted</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            reviewProjects.forEach(project => {
+                const priority = getReviewPriority(project);
+                html += `
+                    <tr>
+                        <td>
+                            <div class="project-info">
+                                <strong>${project.method_name}</strong><br>
+                                <small>Product: ${project.product_name} | Technique: ${project.technique.toUpperCase()}</small>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge status-badge status-${project.status}">${project.status}</span>
+                        </td>
+                        <td>
+                            <span class="priority-badge priority-${priority.level}">${priority.label}</span>
+                        </td>
+                        <td>${Utils.formatDate(project.created_at)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="openReviewModal(${project.id})">
+                                Start Review
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('projectsList').innerHTML = html;
+        } catch (error) {
+            console.error('Error loading projects:', error);
+            document.getElementById('projectsList').innerHTML = '<div class="alert alert-danger">Error loading projects</div>';
+        }
+    }
+
+    function getReviewPriority(project) {
+        // Calculate review priority based on project age and complexity
+        const age = new Date() - new Date(project.created_at);
+        const daysOld = age / (1000 * 60 * 60 * 24);
+
+        if (daysOld > 7) return { level: 'high', label: 'High' };
+        if (daysOld > 3) return { level: 'medium', label: 'Medium' };
+        return { level: 'low', label: 'Low' };
+    }
+
+    async function openReviewModal(projectId) {
+        currentProject = null;
+        parameterReviews = {};
+
+        try {
+            const { data: project } = await api.getProject(projectId);
+            currentProject = project;
+
+            document.getElementById('reviewProjectTitle').textContent = project.method_name;
+
+            const reviewContent = await buildReviewInterface(project);
+            document.getElementById('reviewContent').innerHTML = reviewContent;
+
+            document.getElementById('reviewModal').classList.add('show');
+        } catch (error) {
+            console.error('Error loading project for review:', error);
+            Utils.showError('Error loading project details');
+        }
+    }
+
+    async function buildReviewInterface(project) {
+        let html = `
+            <div class="review-header">
+                <div class="project-summary">
+                    <h3>Project Summary</h3>
+                    <dl>
+                        <dt>Analyst:</dt><dd>${project.created_by}</dd>
+                        <dt>Product:</dt><dd>${project.product_name}</dd>
+                        <dt>Technique:</dt><dd>${project.technique.toUpperCase()}</dd>
+                        <dt>Guideline:</dt><dd>${project.guideline.toUpperCase()}</dd>
+                        <dt>Submitted:</dt><dd>${Utils.formatDate(project.created_at)}</dd>
+                    </dl>
+                </div>
+            </div>
+
+            <div class="review-sections">
+                <div class="review-section">
+                    <h4>Data Verification</h4>
+                    <div id="dataVerificationContent">
+                        <div class="loading">Loading validation data...</div>
+                    </div>
+                </div>
+
+                <div class="review-section">
+                    <h4>Parameter Reviews</h4>
+                    <div id="parameterReviewsContent">
+                        <div class="loading">Loading validation steps...</div>
+                    </div>
+                </div>
+
+                <div class="review-section">
+                    <h4>Final Assessment</h4>
+                    <div class="form-group">
+                        <label>Overall Review Decision *</label>
+                        <select id="finalDecision" onchange="onFinalDecisionChange()">
+                            <option value="">Select final decision</option>
+                            <option value="approve">✅ APPROVE - All parameters meet requirements</option>
+                            <option value="reject">❌ REJECT - Major issues require re-validation</option>
+                            <option value="conditional">⚠️ CONDITIONAL - Approve with conditions</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Final Review Comments *</label>
+                        <textarea id="finalComments" rows="4" placeholder="Provide comprehensive review summary, recommendations, and any conditions for approval..."></textarea>
+                    </div>
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="confirmCompliance">
+                            I confirm this review ensures ICH Q2(R1) compliance and data integrity
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="acknowledgeResponsibility">
+                            I acknowledge my responsibility for this scientific and technical assessment
+                        </label>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Load data verification and parameter reviews asynchronously
+        setTimeout(() => {
+            loadDataVerification(project);
+            loadParameterReviews(project);
+        }, 100);
+
+        return html;
+    }
+
+    async function loadDataVerification(project) {
+        // This would load actual validation data in a real implementation
+        const content = `
+            <div class="verification-checklist">
+                <h5>Data Integrity Verification</h5>
+                <div class="checklist-item">
+                    <input type="checkbox" id="verify_sample_prep">
+                    <label for="verify_sample_prep">Sample preparation procedures documented and appropriate</label>
+                </div>
+                <div class="checklist-item">
+                    <input type="checkbox" id="verify_concentrations">
+                    <label for="verify_concentrations">Concentration levels cover appropriate range and include blanks</label>
+                </div>
+                <div class="checklist-item">
+                    <input type="checkbox" id="verify_replicates">
+                    <label for="verify_replicates">Appropriate number of replicates (≥3) for statistical validity</label>
+                </div>
+                <div class="checklist-item">
+                    <input type="checkbox" id="verify_calculations">
+                    <label for="verify_calculations">All calculations performed correctly using validated formulas</label>
+                </div>
+                <div class="checklist-item">
+                    <input type="checkbox" id="verify_outliers">
+                    <label for="verify_outliers">No unexplained outliers or anomalous data points</label>
+                </div>
+            </div>
+        `;
+        document.getElementById('dataVerificationContent').innerHTML = content;
+    }
+
+    async function loadParameterReviews(project) {
+        // Mock parameter data - in real implementation, fetch from API
+        const parameters = [
+            { name: 'Linearity', status: 'PASS', details: 'r² = 0.9998, acceptable intercept' },
+            { name: 'Accuracy', status: 'PASS', details: 'Recovery 98-102%, RSD < 2%' },
+            { name: 'Precision', status: 'PASS', details: 'RSD = 1.2% (repeatability)' },
+            { name: 'LOD/LOQ', status: 'PASS', details: 'LOD = 0.05 μg/mL, LOQ = 0.15 μg/mL' }
+        ];
+
+        let html = '<div class="parameter-review-grid">';
+        parameters.forEach((param, index) => {
+            const statusClass = param.status.toLowerCase();
+            html += `
+                <div class="parameter-card">
+                    <div class="parameter-header">
+                        <h5>${param.name}</h5>
+                        <span class="badge status-${statusClass}">${param.status}</span>
+                    </div>
+                    <div class="parameter-details">
+                        <p>${param.details}</p>
+                    </div>
+                    <div class="parameter-actions">
+                        <button class="btn btn-sm btn-outline-primary" onclick="reviewParameter('${param.name}', ${index})">
+                            Review Details
+                        </button>
+                        <span class="review-status" id="review-status-${index}">Not Reviewed</span>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        document.getElementById('parameterReviewsContent').innerHTML = html;
+    }
+
+    function reviewParameter(paramName, paramIndex) {
+        const modal = document.getElementById('parameterModal');
+        document.getElementById('parameterTitle').textContent = `Review: ${paramName}`;
+
+        // Mock parameter data - in real implementation, fetch actual validation data
+        const paramData = {
+            name: paramName,
+            rawData: {
+                concentrations: [25, 50, 75, 100, 125],
+                responses: [2450, 4980, 7520, 9950, 12480]
+            },
+            calculations: {
+                slope: 99.84,
+                intercept: 12.5,
+                r_squared: 0.9998,
+                passed: true
+            },
+            criteria: "ICH Q2(R1): r² ≥ 0.99, acceptable intercept"
+        };
+
+        const content = `
+            <div class="parameter-review-details">
+                <div class="data-section">
+                    <h5>Raw Data</h5>
+                    <div class="data-tables">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Concentration</th><th>Response</th></tr>
+                            </thead>
+                            <tbody>
+                                ${paramData.rawData.concentrations.map((conc, i) =>
+                                    `<tr><td>${conc}</td><td>${paramData.rawData.responses[i]}</td></tr>`
+                                ).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="calculations-section">
+                    <h5>Statistical Results</h5>
+                    <div class="metrics-display">
+                        <div class="metric">Slope: <strong>${paramData.calculations.slope.toFixed(4)}</strong></div>
+                        <div class="metric">Intercept: <strong>${paramData.calculations.intercept.toFixed(2)}</strong></div>
+                        <div class="metric">r²: <strong>${paramData.calculations.r_squared.toFixed(4)}</strong></div>
+                    </div>
+                </div>
+
+                <div class="criteria-section">
+                    <h5>Acceptance Criteria</h5>
+                    <p>${paramData.criteria}</p>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('parameterContent').innerHTML = content;
+        modal.classList.add('show');
+    }
+
+    function onParameterDecisionChange() {
+        const decision = document.getElementById('parameterDecision').value;
+        const deviationSection = document.getElementById('deviationSection');
+
+        if (decision === 'reject') {
+            deviationSection.style.display = 'block';
+        } else {
+            deviationSection.style.display = 'none';
+        }
+    }
+
+    async function submitParameterReview() {
+        const decision = document.getElementById('parameterDecision').value;
+        const comments = document.getElementById('parameterComments').value;
+
+        if (!decision || !comments.trim()) {
+            Utils.showError('Please provide decision and comments');
+            return;
+        }
+
+        // Store parameter review
+        const paramName = document.getElementById('parameterTitle').textContent.replace('Review: ', '');
+        parameterReviews[paramName] = {
+            decision,
+            comments,
+            timestamp: new Date().toISOString()
+        };
+
+        Utils.showSuccess(`Parameter ${paramName} reviewed successfully`);
+        closeParameterModal();
+
+        // Update review status
+        updateReviewStatuses();
+    }
+
+    function updateReviewStatuses() {
+        Object.keys(parameterReviews).forEach((paramName, index) => {
+            const statusElement = document.getElementById(`review-status-${index}`);
+            if (statusElement) {
+                statusElement.textContent = 'Reviewed';
+                statusElement.className = 'review-status reviewed';
+            }
+        });
+    }
+
+    function onFinalDecisionChange() {
+        const decision = document.getElementById('finalDecision').value;
+        const submitBtn = document.getElementById('submitReviewBtn');
+
+        const confirmCompliance = document.getElementById('confirmCompliance').checked;
+        const acknowledgeResp = document.getElementById('acknowledgeResponsibility').checked;
+        const comments = document.getElementById('finalComments').value.trim();
+
+        submitBtn.disabled = !(decision && comments && confirmCompliance && acknowledgeResp);
+    }
+
+    async function submitFinalReview() {
+        const finalDecision = document.getElementById('finalDecision').value;
+        const finalComments = document.getElementById('finalComments').value;
+
+        if (!finalDecision || !finalComments.trim()) {
+            Utils.showError('Please complete all final review fields');
+            return;
+        }
+
+        try {
+            const reviewData = {
+                final_decision: finalDecision,
+                comments: finalComments,
+                parameter_reviews: parameterReviews,
+                reviewer_signature: true,
+                timestamp: new Date().toISOString()
+            };
+
+            // In real implementation, call API
+            // await api.submitReview(currentProject.id, reviewData);
+
+            Utils.showSuccess('Project review submitted successfully!');
+
+            // For demo, just close modal and refresh
+            setTimeout(() => {
+                closeReviewModal();
+                loadProjects();
+            }, 1500);
+
+        } catch (error) {
+            Utils.showError('Error submitting review');
+        }
+    }
+
+    function closeReviewModal() {
+        document.getElementById('reviewModal').classList.remove('show');
+    }
+
+    function closeParameterModal() {
+        document.getElementById('parameterModal').classList.remove('show');
+    }
+
+    function logout() {
+        api.logout();
+        window.location.href = '/login/';
+    }
+
+    loadProjects();
+</script>
+{% endblock %}
+</content>

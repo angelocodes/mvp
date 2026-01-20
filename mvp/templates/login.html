@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Login - Analytical Method Validation MVP{% endblock %}
+
+{% block content %}
+<div style="background: linear-gradient(135deg, #0d6efd, #0b5ed7); display: flex; align-items: center; justify-content: center; height: 100vh;">
+    <div class="container" style="display: flex; align-items: center; justify-content: center;">
+        <div class="card" style="width: 100%; max-width: 400px;">
+            <div class="card-header" style="background: white; color: #0d6efd; text-align: center;">
+                <h1 style="font-size: 28px; margin: 20px 0;">Validation MVP</h1>
+                <p style="color: #6c757d; margin: 0;">ICH Q2(R1) Analytical Method Validation</p>
+            </div>
+            <div class="card-body">
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

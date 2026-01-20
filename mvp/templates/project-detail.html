@@ -1,0 +1,653 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Project Detail - Analytical Method Validation MVP{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-8">
+            <div class="card">
+                <div class="card-header">
+                    <h2 id="projectTitle"></h2>
+                </div>
+                <div class="card-body">
+                    <div id="projectInfo">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <span>Loading project...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Validation Steps</h3>
+                </div>
+                <div class="card-body">
+                    <div id="workflowSteps" class="workflow-steps"></div>
+                    <div id="validationContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-4">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Project Details</h3>
+                </div>
+                <div class="card-body" id="sidebarInfo">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="reviewCard" style="display: none;">
+                <div class="card-header">
+                    <h3>Review</h3>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Comment</label>
+                        <textarea id="reviewComment"></textarea>
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="submitReview()">Submit Review</button>
+                </div>
+            </div>
+
+            <div class="card" id="approveCard" style="display: none;">
+                <div class="card-header">
+                    <h3>QA Approval</h3>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-success btn-block" onclick="approveProject()">Approve Project</button>
+                    <button class="btn btn-danger btn-block" style="margin-top: 10px;" onclick="rejectProject()">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Validation Result Modal -->
+<div id="validationModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Validation Result</h2>
+            <button class="modal-close" onclick="closeValidationModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="validationResultContent"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeValidationModalAndRefresh()">Close</button>
+            <button class="btn btn-primary" onclick="closeValidationModalAndRefresh()">Continue to Next Step</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const projectId = {{ project_id }};
+    let projectData = null;
+
+    async function loadProject() {
+        try {
+            const { data } = await api.getProject(projectId);
+            projectData = data;
+            
+            document.getElementById('projectTitle').textContent = data.method_name;
+            
+            let sidebarHTML = `
+                <dl>
+                    <dt>Status</dt>
+                    <dd><span class="badge status-badge status-${data.status}">${data.status}</span></dd>
+                    <dt>Product</dt>
+                    <dd>${data.product_name}</dd>
+                    <dt>Technique</dt>
+                    <dd>${data.technique.toUpperCase()}</dd>
+                    <dt>Created By</dt>
+                    <dd>${data.created_by}</dd>
+                    <dt>Created At</dt>
+                    <dd>${Utils.formatDate(data.created_at)}</dd>
+            `;
+            if (data.reviewer) {
+                sidebarHTML += `
+                    <dt>Reviewer</dt>
+                    <dd>${data.reviewer}</dd>
+                `;
+            }
+            if (data.qa_approver) {
+                sidebarHTML += `
+                    <dt>QA Approver</dt>
+                    <dd>${data.qa_approver}</dd>
+                `;
+            }
+            sidebarHTML += '</dl>';
+            document.getElementById('sidebarInfo').innerHTML = sidebarHTML;
+
+            let projectHTML = `
+                <table style="width: 100%;">
+                    <tr>
+                        <td><strong>Method Type:</strong></td>
+                        <td>${data.method_type}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Guideline:</strong></td>
+                        <td>${data.guideline}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Current Status:</strong></td>
+                        <td><span class="badge status-badge status-${data.status}">${data.status}</span></td>
+                    </tr>
+                </table>
+            `;
+
+            if (data.status === 'draft') {
+                projectHTML += '<button class="btn btn-primary" style="margin-top: 20px; width: 100%;" onclick="startValidation()">Start Validation</button>';
+            }
+
+            document.getElementById('projectInfo').innerHTML = projectHTML;
+            loadWorkflowSteps();
+        } catch (error) {
+            console.error('Error loading project:', error);
+        }
+    }
+
+    function loadWorkflowSteps() {
+        const steps = ['Linearity', 'Accuracy', 'Precision', 'LOD/LOQ'];
+        const statuses = ['linearity', 'accuracy', 'precision', 'lod_loq'];
+
+        // Define workflow progression order
+        const workflowOrder = ['draft', 'linearity', 'accuracy', 'precision', 'lod_loq', 'review', 'approved'];
+        const currentStatusIndex = workflowOrder.indexOf(projectData.status);
+
+        let stepsHTML = '';
+        statuses.forEach((status, index) => {
+            let stepClass = 'step';
+            const stepStatusIndex = workflowOrder.indexOf(status);
+
+            if (projectData.status === status) {
+                stepClass += ' active'; // Currently working on this step
+            } else if (currentStatusIndex > stepStatusIndex) {
+                stepClass += ' completed'; // This step is completed
+            }
+            // Otherwise, it's pending (default styling)
+
+            stepsHTML += `
+                <div class="${stepClass}">
+                    <div class="step-name">${steps[index]}</div>
+                    <div class="step-status">${status}</div>
+                </div>
+            `;
+        });
+        document.getElementById('workflowSteps').innerHTML = stepsHTML;
+        loadValidationContent();
+    }
+
+    function loadValidationContent() {
+        const status = projectData.status;
+        let contentHTML = '';
+
+        if (status === 'draft') {
+            contentHTML = '<p style="color: #6c757d;">Start validation to begin entering data.</p>';
+        } else if (status === 'linearity') {
+            contentHTML = getLinearityForm();
+        } else if (status === 'accuracy') {
+            contentHTML = getAccuracyForm();
+        } else if (status === 'precision') {
+            contentHTML = getPrecisionForm();
+        } else if (status === 'lod_loq') {
+            contentHTML = getLODLOQForm();
+        } else if (['review', 'approved'].includes(status)) {
+            contentHTML = '<p style="color: #6c757d;">All validation steps completed. Awaiting review.</p>';
+        }
+
+        document.getElementById('validationContent').innerHTML = contentHTML;
+    }
+
+    function getLinearityForm() {
+        // Check if this step has been attempted before and failed
+        const hasFailedAttempt = checkForFailedAttempts('linearity');
+
+        let formHeader = `
+            <h4>Linearity Test</h4>
+            <div class="alert alert-info">
+                <strong>Instructions:</strong> Enter concentration levels and corresponding instrument responses.
+                Ensure all data is accurate and complete before submission.
+            </div>
+        `;
+
+        if (hasFailedAttempt) {
+            formHeader += `
+                <div class="alert alert-warning">
+                    <strong>⚠️ Previous Attempt Failed:</strong> This validation step failed in a previous attempt.
+                    <a href="/re-analysis/?project=${projectId}&step=linearity" class="btn btn-sm btn-warning">Request Re-Analysis</a>
+                </div>
+            `;
+        }
+
+        const formContent = `
+            <div class="form-group">
+                <label>Concentrations (comma-separated) *</label>
+                <input type="text" id="concentrations" placeholder="e.g., 50, 75, 100, 125, 150" required oninput="validateForm()">
+                <small class="text-muted">Enter concentration values in μg/mL</small>
+            </div>
+
+            <div class="form-group">
+                <label>Responses (comma-separated) *</label>
+                <input type="text" id="responses" placeholder="e.g., 5000, 7500, 10000, 12500, 15000" required oninput="validateForm()">
+                <small class="text-muted">Enter peak area or instrument response values</small>
+            </div>
+
+            <div class="form-group">
+                <label>Supporting Files (Optional)</label>
+                <input type="file" id="supportingFiles" multiple accept=".pdf,.csv,.jpg,.png,.tiff" onchange="handleFileSelect(event)">
+                <small class="text-muted">Upload chromatograms, instrument PDFs, or CSV exports</small>
+                <div id="fileList"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="dataComplete" onchange="validateForm()">
+                    I confirm that all data entered is complete, accurate, and ready for submission
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="acknowledgeWarnings" onchange="validateForm()">
+                    I acknowledge and understand any system warnings or requirements
+                </label>
+            </div>
+
+            <button class="btn btn-primary" onclick="submitLinearity()" id="submitBtn" disabled>Submit Linearity</button>
+            <div id="linearityResult"></div>
+        `;
+
+        return `<div style="margin-top: 20px;">${formHeader}${formContent}</div>`;
+    }
+
+    async function submitLinearity() {
+        const concentrations = document.getElementById('concentrations').value.split(',').map(Number);
+        const responses = document.getElementById('responses').value.split(',').map(Number);
+
+        try {
+            const { status, data } = await api.submitLinearity(projectId, concentrations, responses);
+            if (status === 200) {
+                const result = Utils.parseValidationResponse(data);
+                Utils.displayValidationResult(document.getElementById('linearityResult'), result);
+                Utils.showSuccess('Linearity submitted successfully!');
+                setTimeout(() => loadProject(), 1500);
+            }
+        } catch (error) {
+            Utils.showError('Error submitting linearity');
+        }
+    }
+
+    function getAccuracyForm() {
+        return `
+            <div style="margin-top: 20px;">
+                <h4>Accuracy Test (Recovery Testing)</h4>
+                <div class="alert alert-info">
+                    <strong>Instructions:</strong> Test at three concentration levels (80%, 100%, 120%). 
+                    Enter the measured values and the recovery will be calculated automatically.
+                </div>
+                <div class="form-group">
+                    <label>Accuracy Level *</label>
+                    <select id="accuracyLevel" required>
+                        <option value="">Select level</option>
+                        <option value="80">80% (Low)</option>
+                        <option value="100">100% (Medium)</option>
+                        <option value="120">120% (High)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Measured Values (comma-separated) *</label>
+                    <input type="text" id="measuredValues" placeholder="e.g., 98.5, 99.2, 98.8" required>
+                    <small class="text-muted">Enter recovery % values for each replicate (minimum 3)</small>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="accuracyConfirm" onchange="validateForm()">
+                        I confirm that all accuracy data is complete and accurate
+                    </label>
+                </div>
+                <button class="btn btn-primary" onclick="submitAccuracy()" id="accuracySubmitBtn" disabled>Submit Accuracy</button>
+                <div id="accuracyResult"></div>
+            </div>
+        `;
+    }
+
+    async function submitAccuracy() {
+        const level = document.getElementById('accuracyLevel').value;
+        const measured_values = document.getElementById('measuredValues').value.split(',').map(Number);
+
+        try {
+            const { status, data } = await api.submitAccuracy(projectId, level, measured_values);
+            if (status === 200) {
+                const result = Utils.parseValidationResponse(data);
+                showValidationModal(result, 'Accuracy');
+                Utils.showSuccess('Accuracy submitted successfully! Data is now locked and cannot be modified.');
+            }
+        } catch (error) {
+            Utils.showError('Error submitting accuracy');
+        }
+    }
+
+    function getPrecisionForm() {
+        return `
+            <div style="margin-top: 20px;">
+                <h4>Precision Test (Repeatability)</h4>
+                <div class="alert alert-info">
+                    <strong>Instructions:</strong> Prepare multiple replicates of the standard solution at 100% concentration.
+                    Enter the measured values for each replicate.
+                </div>
+                <div class="form-group">
+                    <label>Replicate Values (comma-separated) *</label>
+                    <input type="text" id="replicateValues" placeholder="e.g., 99.8, 100.2, 99.5, 100.1, 99.9" required>
+                    <small class="text-muted">Enter peak area or response values for each replicate (minimum 6)</small>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="precisionConfirm" onchange="validateForm()">
+                        I confirm that all precision data is complete and accurate
+                    </label>
+                </div>
+                <button class="btn btn-primary" onclick="submitPrecision()" id="precisionSubmitBtn" disabled>Submit Precision</button>
+                <div id="precisionResult"></div>
+            </div>
+        `;
+    }
+
+    async function submitPrecision() {
+        const replicate_values = document.getElementById('replicateValues').value.split(',').map(Number);
+
+        try {
+            const { status, data } = await api.submitPrecision(projectId, replicate_values);
+            if (status === 200) {
+                const result = Utils.parseValidationResponse(data);
+                showValidationModal(result, 'Precision');
+                Utils.showSuccess('Precision submitted successfully! Data is now locked and cannot be modified.');
+            }
+        } catch (error) {
+            Utils.showError('Error submitting precision');
+        }
+    }
+
+    function getLODLOQForm() {
+        return `
+            <div style="margin-top: 20px;">
+                <h4>LOD/LOQ Determination</h4>
+                <div class="alert alert-info">
+                    <strong>Instructions:</strong> Analyze blank samples and calculate LOD/LOQ based on signal-to-noise ratio.
+                    Enter the blank responses and the method slope.
+                </div>
+                <div class="form-group">
+                    <label>Blank Responses (comma-separated) *</label>
+                    <input type="text" id="blankResponses" placeholder="e.g., 50, 45, 52, 48, 51" required>
+                    <small class="text-muted">Enter instrument response values for blank samples (minimum 5)</small>
+                </div>
+                <div class="form-group">
+                    <label>Method Slope (from Linearity) *</label>
+                    <input type="number" id="methodSlope" placeholder="e.g., 100.5" step="0.1" required>
+                    <small class="text-muted">Enter the slope value from the linearity test</small>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="lodloqConfirm" onchange="validateForm()">
+                        I confirm that all LOD/LOQ data is complete and accurate
+                    </label>
+                </div>
+                <button class="btn btn-primary" onclick="submitLODLOQ()" id="lodloqSubmitBtn" disabled>Submit LOD/LOQ</button>
+                <div id="lodloqResult"></div>
+            </div>
+        `;
+    }
+
+    async function submitLODLOQ() {
+        const blank_responses = document.getElementById('blankResponses').value.split(',').map(Number);
+        const slope = parseFloat(document.getElementById('methodSlope').value);
+
+        try {
+            const { status, data } = await api.submitLODLOQ(projectId, blank_responses, slope);
+            if (status === 200) {
+                const result = Utils.parseValidationResponse(data);
+                showValidationModal(result, 'LOD/LOQ');
+                Utils.showSuccess('LOD/LOQ submitted successfully! Data is now locked and cannot be modified.');
+            }
+        } catch (error) {
+            Utils.showError('Error submitting LOD/LOQ');
+        }
+    }
+
+    async function startValidation() {
+        try {
+            const { status } = await api.startValidation(projectId);
+            if (status === 200) {
+                Utils.showSuccess('Validation started!');
+                loadProject();
+            }
+        } catch (error) {
+            Utils.showError('Error starting validation');
+        }
+    }
+
+    async function submitReview() {
+        const comment = document.getElementById('reviewComment').value;
+        try {
+            const { status } = await api.reviewProject(projectId, comment);
+            if (status === 200) {
+                Utils.showSuccess('Review submitted!');
+                setTimeout(() => loadProject(), 1500);
+            }
+        } catch (error) {
+            Utils.showError('Error submitting review');
+        }
+    }
+
+    async function approveProject() {
+        try {
+            const { status } = await api.approveProject(projectId);
+            if (status === 200) {
+                Utils.showSuccess('Project approved!');
+                setTimeout(() => loadProject(), 1500);
+            }
+        } catch (error) {
+            Utils.showError('Error approving project');
+        }
+    }
+
+    function rejectProject() {
+        Utils.showError('Rejection feature coming soon');
+    }
+
+    function validateForm() {
+        const status = projectData.status;
+        let isDataValid = false;
+        let submitBtn = null;
+        let buttonText = 'Complete all fields and confirmations to submit';
+
+        if (status === 'linearity') {
+            const concentrations = document.getElementById('concentrations')?.value.trim() || '';
+            const responses = document.getElementById('responses')?.value.trim() || '';
+            const dataComplete = document.getElementById('dataComplete')?.checked;
+            const acknowledgeWarnings = document.getElementById('acknowledgeWarnings')?.checked;
+            submitBtn = document.getElementById('submitBtn');
+
+            const concArray = concentrations.split(',').map(s => s.trim()).filter(s => s !== '');
+            const respArray = responses.split(',').map(s => s.trim()).filter(s => s !== '');
+
+            isDataValid = concArray.length >= 3 && respArray.length >= 3 &&
+                         concArray.length === respArray.length &&
+                         concArray.every(c => !isNaN(c) && c > 0) &&
+                         respArray.every(r => !isNaN(r) && r > 0);
+
+            buttonText = 'Submit Linearity';
+            if (submitBtn) submitBtn.disabled = !(isDataValid && dataComplete && acknowledgeWarnings);
+        } 
+        else if (status === 'accuracy') {
+            const level = document.getElementById('accuracyLevel')?.value;
+            const measuredValues = document.getElementById('measuredValues')?.value.trim() || '';
+            const accuracyConfirm = document.getElementById('accuracyConfirm')?.checked;
+            submitBtn = document.getElementById('accuracySubmitBtn');
+
+            const valueArray = measuredValues.split(',').map(s => s.trim()).filter(s => s !== '');
+            isDataValid = level && valueArray.length >= 3 &&
+                         valueArray.every(v => !isNaN(v) && v > 0);
+
+            buttonText = 'Submit Accuracy';
+            if (submitBtn) submitBtn.disabled = !(isDataValid && accuracyConfirm);
+        }
+        else if (status === 'precision') {
+            const replicateValues = document.getElementById('replicateValues')?.value.trim() || '';
+            const precisionConfirm = document.getElementById('precisionConfirm')?.checked;
+            submitBtn = document.getElementById('precisionSubmitBtn');
+
+            const valueArray = replicateValues.split(',').map(s => s.trim()).filter(s => s !== '');
+            isDataValid = valueArray.length >= 6 &&
+                         valueArray.every(v => !isNaN(v) && v > 0);
+
+            buttonText = 'Submit Precision';
+            if (submitBtn) submitBtn.disabled = !(isDataValid && precisionConfirm);
+        }
+        else if (status === 'lod_loq') {
+            const blankResponses = document.getElementById('blankResponses')?.value.trim() || '';
+            const methodSlope = document.getElementById('methodSlope')?.value.trim() || '';
+            const lodloqConfirm = document.getElementById('lodloqConfirm')?.checked;
+            submitBtn = document.getElementById('lodloqSubmitBtn');
+
+            const valueArray = blankResponses.split(',').map(s => s.trim()).filter(s => s !== '');
+            isDataValid = valueArray.length >= 5 &&
+                         valueArray.every(v => !isNaN(v) && v >= 0) &&
+                         !isNaN(methodSlope) && methodSlope > 0;
+
+            buttonText = 'Submit LOD/LOQ';
+            if (submitBtn) submitBtn.disabled = !(isDataValid && lodloqConfirm);
+        }
+
+        // Update button text if it exists
+        if (submitBtn) {
+            submitBtn.textContent = submitBtn.disabled ?
+                'Complete all fields and confirmations to submit' : buttonText;
+        }
+
+        return isDataValid;
+    }
+
+    function handleFileSelect(event) {
+        const files = event.target.files;
+        const fileList = document.getElementById('fileList');
+
+        if (files.length === 0) {
+            fileList.innerHTML = '';
+            return;
+        }
+
+        let html = '<div style="margin-top: 10px;"><strong>Selected files:</strong><ul>';
+        Array.from(files).forEach((file, index) => {
+            const fileSize = (file.size / 1024 / 1024).toFixed(2);
+            html += `<li>${file.name} (${fileSize} MB)</li>`;
+        });
+        html += '</ul></div>';
+
+        fileList.innerHTML = html;
+    }
+
+    async function submitLinearity() {
+        if (!validateForm()) {
+            Utils.showError('Please complete all required fields and confirmations');
+            return;
+        }
+
+        const concentrations = document.getElementById('concentrations').value.split(',').map(s => parseFloat(s.trim()));
+        const responses = document.getElementById('responses').value.split(',').map(s => parseFloat(s.trim()));
+
+        // Validate arrays are equal length and contain valid numbers
+        if (concentrations.length !== responses.length) {
+            Utils.showError('Concentrations and responses must have the same number of values');
+            return;
+        }
+
+        if (concentrations.some(isNaN) || responses.some(isNaN)) {
+            Utils.showError('All values must be valid numbers');
+            return;
+        }
+
+        try {
+            const { status, data } = await api.submitLinearity(projectId, concentrations, responses);
+            if (status === 200) {
+                const result = Utils.parseValidationResponse(data);
+                showValidationModal(result);
+                Utils.showSuccess('Linearity submitted successfully! Data is now locked and cannot be modified.');
+            } else if (status === 400) {
+                Utils.showError(data.error || 'Error submitting linearity data');
+            }
+        } catch (error) {
+            console.error('Error submitting linearity:', error);
+            Utils.showError('Error submitting linearity data. Please try again.');
+        }
+    }
+
+    function showValidationModal(result, stepName = 'Linearity') {
+        const modal = document.getElementById('validationModal');
+        const content = document.getElementById('validationResultContent');
+
+        // Create enhanced result display
+        content.innerHTML = `
+            <div class="validation-result-modal">
+                <div class="result-header">
+                    <h3>${stepName} Validation Result: <span class="status-badge status-${result.status.toLowerCase()}">${result.status}</span></h3>
+                </div>
+                <div class="result-metrics">
+                    <h4>Calculated Metrics:</h4>
+                    <div class="metrics-grid">
+                        ${Object.entries(result.metrics).map(([key, value]) => `
+                            <div class="metric-item">
+                                <span class="metric-label">${key.replace('_', ' ').toUpperCase()}:</span>
+                                <span class="metric-value">${typeof value === 'number' ? value.toFixed(4) : value}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="result-justification">
+                    <h4>ICH Q2(R1) Compliance Check:</h4>
+                    <div class="justification-content">
+                        ${result.justification.split('; ').map(item => `<p>✓ ${item}</p>`).join('')}
+                    </div>
+                </div>
+                ${result.status === 'PASS' ?
+                    '<div class="alert alert-success"><strong>✅ Passed:</strong> Data meets pharmaceutical validation requirements. Proceeding to next step.</div>' :
+                    '<div class="alert alert-danger"><strong>❌ Failed:</strong> Data does not meet ICH Q2 requirements. Re-analysis may be required.</div>'
+                }
+            </div>
+        `;
+
+        modal.classList.add('show');
+    }
+
+    function closeValidationModal() {
+        document.getElementById('validationModal').classList.remove('show');
+    }
+
+    function closeValidationModalAndRefresh() {
+        closeValidationModal();
+        loadProject(); // Refresh the page to show updated workflow
+    }
+
+    function checkForFailedAttempts(step) {
+        // For now, return false - in a real implementation, this would check the API
+        // for previous failed attempts for this step
+        return false;
+    }
+
+    function logout() {
+        api.logout();
+        window.location.href = '/login/';
+    }
+
+    loadProject();
+</script>
+{% endblock %}

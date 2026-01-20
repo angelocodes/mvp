@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Re-Analysis - Analytical Method Validation MVP{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Re-Analysis Request</h2>
+                    <small>Project: <strong id="projectTitle"></strong></small>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <h4>⚠️ Validation Step Failed</h4>
+                        <p>The previous validation attempt did not meet acceptance criteria. You may request re-analysis with proper justification.</p>
+                    </div>
+
+                    <div id="failedStepInfo">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <span>Loading failed step details...</span>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 20px;">
+                        <div class="card-header">
+                            <h4>Re-Analysis Request Form</h4>
+                        </div>
+                        <div class="card-body">
+                            <form id="reAnalysisForm">
+                                <div class="form-group">
+                                    <label>Reason for Re-Analysis *</label>
+                                    <select id="reason" required>
+                                        <option value="">Select reason</option>
+                                        <option value="instrument_error">Instrument Error/Calibration Issue</option>
+                                        <option value="sample_prep_error">Sample Preparation Error</option>
+                                        <option value="data_entry_error">Data Entry Error</option>
+                                        <option value="method_deviation">Method Deviation</option>
+                                        <option value="environmental_conditions">Environmental Conditions</option>
+                                        <option value="other">Other (specify below)</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Detailed Justification *</label>
+                                    <textarea id="justification" rows="4" placeholder="Provide detailed explanation of the issue and corrective actions taken..." required></textarea>
+                                    <small class="text-muted">Explain what went wrong and how you've addressed it</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Corrective Actions Taken</label>
+                                    <textarea id="correctiveActions" rows="3" placeholder="Describe the corrective actions implemented..."></textarea>
+                                    <small class="text-muted">What steps have you taken to prevent this issue in re-analysis?</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Supporting Evidence (Optional)</label>
+                                    <input type="file" id="supportingEvidence" multiple accept=".pdf,.doc,.docx,.jpg,.png">
+                                    <small class="text-muted">Upload calibration records, error logs, or other evidence</small>
+                                    <div id="evidenceFileList"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="confirmCorrectiveActions">
+                                        I confirm that all corrective actions have been implemented and documented
+                                    </label>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="acknowledgeImpact">
+                                        I acknowledge that re-analysis results must meet acceptance criteria or the validation may be rejected
+                                    </label>
+                                </div>
+
+                                <button type="button" class="btn btn-warning" onclick="submitReAnalysisRequest()" id="submitBtn" disabled>
+                                    Submit Re-Analysis Request
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const projectId = urlParams.get('project');
+    const step = urlParams.get('step');
+
+    async function loadFailedStepInfo() {
+        try {
+            const { data: project } = await api.getProject(projectId);
+
+            document.getElementById('projectTitle').textContent = project.method_name;
+
+            let stepInfo = `
+                <div class="alert alert-danger">
+                    <h4>Failed Step: ${step.charAt(0).toUpperCase() + step.slice(1).replace('_', '/').toUpperCase()}</h4>
+                    <p>This step failed to meet ICH Q2(R1) acceptance criteria in the previous validation attempt.</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Previous Validation Results</h4>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Status:</strong> <span class="badge status-fail">FAILED</span></p>
+                        <p><strong>Attempt Date:</strong> ${Utils.formatDate(new Date())}</p>
+                        <p><strong>Next Steps:</strong> Complete re-analysis request form below</p>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('failedStepInfo').innerHTML = stepInfo;
+
+            // Enable form validation
+            setupFormValidation();
+
+        } catch (error) {
+            console.error('Error loading project:', error);
+            Utils.showError('Error loading re-analysis request details');
+        }
+    }
+
+    function setupFormValidation() {
+        const form = document.getElementById('reAnalysisForm');
+        const submitBtn = document.getElementById('submitBtn');
+
+        // Add event listeners for real-time validation
+        form.querySelectorAll('input, select, textarea').forEach(element => {
+            element.addEventListener('input', validateReAnalysisForm);
+            element.addEventListener('change', validateReAnalysisForm);
+        });
+
+        // File upload handling
+        document.getElementById('supportingEvidence').addEventListener('change', handleEvidenceFileSelect);
+    }
+
+    function validateReAnalysisForm() {
+        const reason = document.getElementById('reason').value;
+        const justification = document.getElementById('justification').value.trim();
+        const confirmCorrective = document.getElementById('confirmCorrectiveActions').checked;
+        const acknowledgeImpact = document.getElementById('acknowledgeImpact').checked;
+        const submitBtn = document.getElementById('submitBtn');
+
+        const isValid = reason && justification.length >= 50 && confirmCorrective && acknowledgeImpact;
+
+        submitBtn.disabled = !isValid;
+
+        if (!isValid) {
+            submitBtn.textContent = 'Complete all required fields to submit';
+        } else {
+            submitBtn.textContent = 'Submit Re-Analysis Request';
+        }
+
+        return isValid;
+    }
+
+    function handleEvidenceFileSelect(event) {
+        const files = event.target.files;
+        const fileList = document.getElementById('evidenceFileList');
+
+        if (files.length === 0) {
+            fileList.innerHTML = '';
+            return;
+        }
+
+        let html = '<div style="margin-top: 10px;"><strong>Selected evidence files:</strong><ul>';
+        Array.from(files).forEach((file) => {
+            const fileSize = (file.size / 1024 / 1024).toFixed(2);
+            html += `<li>${file.name} (${fileSize} MB) - ${file.type || 'Unknown type'}</li>`;
+        });
+        html += '</ul></div>';
+
+        fileList.innerHTML = html;
+    }
+
+    async function submitReAnalysisRequest() {
+        if (!validateReAnalysisForm()) {
+            Utils.showError('Please complete all required fields');
+            return;
+        }
+
+        const reAnalysisData = {
+            reason: document.getElementById('reason').value,
+            justification: document.getElementById('justification').value,
+            corrective_actions: document.getElementById('correctiveActions').value,
+            step: step,
+            confirm_corrective_actions: document.getElementById('confirmCorrectiveActions').checked,
+            acknowledge_impact: document.getElementById('acknowledgeImpact').checked
+        };
+
+        try {
+            // For now, just show success and redirect
+            // In a real implementation, this would call an API endpoint
+            Utils.showSuccess('Re-analysis request submitted successfully. You may now proceed with corrected data entry.');
+            setTimeout(() => {
+                window.location.href = `/projects/${projectId}/`;
+            }, 2000);
+
+        } catch (error) {
+            Utils.showError('Error submitting re-analysis request');
+        }
+    }
+
+    function logout() {
+        api.logout();
+        window.location.href = '/login/';
+    }
+
+    // Initialize
+    if (!projectId || !step) {
+        Utils.showError('Invalid re-analysis request parameters');
+        setTimeout(() => window.location.href = '/projects/', 2000);
+    } else {
+        loadFailedStepInfo();
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Projects - Analytical Method Validation MVP{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Projects</h2>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-primary" onclick="showCreateModal()">+ Create New Project</button>
+                    <div id="projectsList" style="margin-top: 20px; min-height: 200px;">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <span>Loading projects...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Project Modal -->
+<div id="createModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Create New Project</h2>
+            <button class="modal-close" onclick="closeCreateModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <form id="createProjectForm">
+                <div class="form-group">
+                    <label for="methodName">Method Name *</label>
+                    <input type="text" id="methodName" required>
+                </div>
+                <div class="form-group">
+                    <label for="productName">Product Name *</label>
+                    <input type="text" id="productName" required>
+                </div>
+                <div class="form-group">
+                    <label for="technique">Technique *</label>
+                    <select id="technique" required>
+                        <option value="">Select technique</option>
+                        <option value="hplc">HPLC</option>
+                        <option value="uv">UV</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="methodType">Method Type *</label>
+                    <select id="methodType" required>
+                        <option value="assay">Assay</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="guideline">Guideline *</label>
+                    <select id="guideline" required>
+                        <option value="ich_q2">ICH Q2(R1)</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="createProject()">Create Project</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadProjects() {
+        try {
+            const { data: projects } = await api.getProjects();
+            
+            if (projects.length === 0) {
+                document.getElementById('projectsList').innerHTML = '<p style="color: #6c757d;">No projects yet. Create one to get started.</p>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>Method</th><th>Product</th><th>Technique</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
+            projects.forEach(project => {
+                html += `
+                    <tr>
+                        <td><strong>${project.method_name}</strong></td>
+                        <td>${project.product_name}</td>
+                        <td><span class="badge">${project.technique.toUpperCase()}</span></td>
+                        <td><span class="badge status-badge status-${project.status}">${project.status}</span></td>
+                        <td>${Utils.formatDate(project.created_at)}</td>
+                        <td>
+                            <a href="/projects/${project.id}/" class="btn btn-sm btn-primary">View</a>
+                            <button class="btn btn-sm btn-danger" onclick="deleteProject(${project.id})">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            document.getElementById('projectsList').innerHTML = html;
+        } catch (error) {
+            console.error('Error loading projects:', error);
+            document.getElementById('projectsList').innerHTML = '<div class="alert alert-danger">Error loading projects</div>';
+        }
+    }
+
+    function showCreateModal() {
+        document.getElementById('createModal').classList.add('show');
+    }
+
+    function closeCreateModal() {
+        document.getElementById('createModal').classList.remove('show');
+        document.getElementById('createProjectForm').reset();
+    }
+
+    async function createProject() {
+        const projectData = {
+            method_name: document.getElementById('methodName').value,
+            product_name: document.getElementById('productName').value,
+            technique: document.getElementById('technique').value,
+            method_type: document.getElementById('methodType').value,
+            guideline: document.getElementById('guideline').value
+        };
+
+        try {
+            const { status, data } = await api.createProject(projectData);
+            if (status === 201) {
+                Utils.showSuccess('Project created successfully!');
+                closeCreateModal();
+                loadProjects();
+            } else {
+                Utils.showError(data.error || 'Error creating project');
+            }
+        } catch (error) {
+            Utils.showError('Error creating project');
+        }
+    }
+
+    async function deleteProject(projectId) {
+        if (confirm('Are you sure you want to delete this project?')) {
+            try {
+                const { status } = await api.deleteProject(projectId);
+                if (status === 204) {
+                    Utils.showSuccess('Project deleted');
+                    loadProjects();
+                } else {
+                    Utils.showError('Error deleting project');
+                }
+            } catch (error) {
+                Utils.showError('Error deleting project');
+            }
+        }
+    }
+
+    function logout() {
+        api.logout();
+        window.location.href = '/login/';
+    }
+
+    loadProjects();
+</script>
+{% endblock %}

@@ -1,0 +1,641 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}QA Administration - Analytical Method Validation MVP{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- QA Dashboard Stats -->
+    <div class="row">
+        <div class="col-12">
+            <div class="qa-stats">
+                <div class="stat-item">
+                    <span class="stat-number" id="totalValidations">0</span>
+                    <span class="stat-label">Total Validations</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="pendingApprovals">0</span>
+                    <span class="stat-label">Pending Approvals</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="activeUsers">0</span>
+                    <span class="stat-label">Active Users</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="auditEvents">0</span>
+                    <span class="stat-label">Audit Events (24h)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main QA Sections -->
+    <div class="row">
+        <div class="col-3">
+            <!-- Navigation Sidebar -->
+            <div class="qa-nav">
+                <div class="nav-section">
+                    <h4>System Governance</h4>
+                    <ul>
+                        <li><a href="#" onclick="showSection('validationTemplates')">Validation Templates</a></li>
+                        <li><a href="#" onclick="showSection('acceptanceCriteria')">Acceptance Criteria</a></li>
+                        <li><a href="#" onclick="showSection('guidelineManagement')">Guideline Management</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h4>Compliance Oversight</h4>
+                    <ul>
+                        <li><a href="#" onclick="showSection('finalApprovals')">Final Approvals</a></li>
+                        <li><a href="#" onclick="showSection('deviationManagement')">Deviation Management</a></li>
+                        <li><a href="#" onclick="showSection('auditTrail')">Audit Trail</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h4>User Management</h4>
+                    <ul>
+                        <li><a href="#" onclick="showSection('userManagement')">User Administration</a></li>
+                        <li><a href="#" onclick="showSection('inspectorMode')">Inspector Mode</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-9">
+            <!-- Dynamic Content Area -->
+            <div id="contentArea">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>QA Administration Dashboard</h2>
+                        <small>Welcome to Quality Assurance oversight and system governance</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="qa-welcome">
+                            <h3>Quality Assurance Responsibilities</h3>
+                            <div class="qa-responsibilities">
+                                <div class="responsibility-item">
+                                    <h5>🔧 System Governance</h5>
+                                    <p>Define validation templates, acceptance criteria, and regulatory guidelines</p>
+                                </div>
+                                <div class="responsibility-item">
+                                    <h5>📋 Compliance Review</h5>
+                                    <p>Verify ICH/USP/FDA compliance and data integrity principles</p>
+                                </div>
+                                <div class="responsibility-item">
+                                    <h5>🔍 Audit Oversight</h5>
+                                    <p>Monitor audit trails, investigate anomalies, and ensure traceability</p>
+                                </div>
+                                <div class="responsibility-item">
+                                    <h5>✅ Final Approvals</h5>
+                                    <p>Authorize validations and reports for regulatory submission</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Final Approval Modal -->
+<div id="finalApprovalModal" class="modal">
+    <div class="modal-content large-modal">
+        <div class="modal-header">
+            <h2>Final Validation Approval</h2>
+            <button class="modal-close" onclick="closeFinalApprovalModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="approvalContent">
+                <div class="loading">Loading validation details...</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger" onclick="rejectValidation()">Reject Validation</button>
+            <button class="btn btn-success" onclick="approveValidation()">Approve & Lock</button>
+        </div>
+    </div>
+</div>
+
+<!-- Audit Investigation Modal -->
+<div id="auditModal" class="modal">
+    <div class="modal-content large-modal">
+        <div class="modal-header">
+            <h2>Audit Trail Investigation</h2>
+            <button class="modal-close" onclick="closeAuditModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="auditContent">
+                <div class="audit-filters">
+                    <div class="form-group">
+                        <label>Time Range</label>
+                        <select id="auditTimeRange">
+                            <option value="24h">Last 24 hours</option>
+                            <option value="7d">Last 7 days</option>
+                            <option value="30d">Last 30 days</option>
+                            <option value="all">All time</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>User</label>
+                        <select id="auditUser">
+                            <option value="">All users</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Action</label>
+                        <select id="auditAction">
+                            <option value="">All actions</option>
+                            <option value="login">Login</option>
+                            <option value="submit">Submit</option>
+                            <option value="review">Review</option>
+                            <option value="approve">Approve</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="filterAuditLogs()">Filter</button>
+                    <button class="btn btn-secondary" onclick="exportAuditLogs()">Export CSV</button>
+                </div>
+                <div id="auditResults">
+                    <div class="loading">Loading audit logs...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Deviation Management Modal -->
+<div id="deviationModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Deviation Management</h2>
+            <button class="modal-close" onclick="closeDeviationModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="deviationContent">
+                <div class="loading">Loading deviations...</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="initiateCAPA()">Initiate CAPA</button>
+            <button class="btn btn-secondary" onclick="closeDeviationModal()">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentSection = 'dashboard';
+    let auditUsers = [];
+
+    // Initialize QA Dashboard
+    async function initializeQADashboard() {
+        await loadQAStats();
+        await loadAuditUsers();
+        showSection('dashboard');
+    }
+
+    async function loadQAStats() {
+        try {
+            // Mock stats - in real implementation, fetch from API
+            document.getElementById('totalValidations').textContent = '47';
+            document.getElementById('pendingApprovals').textContent = '3';
+            document.getElementById('activeUsers').textContent = '12';
+            document.getElementById('auditEvents').textContent = '156';
+        } catch (error) {
+            console.error('Error loading QA stats:', error);
+        }
+    }
+
+    async function loadAuditUsers() {
+        try {
+            const { data: users } = await api.getUsers();
+            auditUsers = users;
+            const userSelect = document.getElementById('auditUser');
+            userSelect.innerHTML = '<option value="">All users</option>';
+            users.forEach(user => {
+                userSelect.innerHTML += `<option value="${user.id}">${user.username} (${user.role})</option>`;
+            });
+        } catch (error) {
+            console.error('Error loading audit users:', error);
+        }
+    }
+
+    function showSection(sectionName) {
+        currentSection = sectionName;
+        const contentArea = document.getElementById('contentArea');
+
+        switch(sectionName) {
+            case 'validationTemplates':
+                contentArea.innerHTML = getValidationTemplatesContent();
+                break;
+            case 'acceptanceCriteria':
+                contentArea.innerHTML = getAcceptanceCriteriaContent();
+                break;
+            case 'guidelineManagement':
+                contentArea.innerHTML = getGuidelineManagementContent();
+                break;
+            case 'finalApprovals':
+                contentArea.innerHTML = getFinalApprovalsContent();
+                break;
+            case 'deviationManagement':
+                contentArea.innerHTML = getDeviationManagementContent();
+                break;
+            case 'auditTrail':
+                contentArea.innerHTML = getAuditTrailContent();
+                break;
+            case 'userManagement':
+                contentArea.innerHTML = getUserManagementContent();
+                loadUsers();
+                break;
+            case 'inspectorMode':
+                contentArea.innerHTML = getInspectorModeContent();
+                break;
+            default:
+                contentArea.innerHTML = getDashboardContent();
+        }
+    }
+
+    function getDashboardContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>QA Administration Dashboard</h2>
+                </div>
+                <div class="card-body">
+                    <div class="qa-welcome">
+                        <h3>Quality Assurance Responsibilities</h3>
+                        <div class="qa-responsibilities">
+                            <div class="responsibility-item">
+                                <h5>🔧 System Governance</h5>
+                                <p>Define validation templates, acceptance criteria, and regulatory guidelines</p>
+                            </div>
+                            <div class="responsibility-item">
+                                <h5>📋 Compliance Review</h5>
+                                <p>Verify ICH/USP/FDA compliance and data integrity principles</p>
+                            </div>
+                            <div class="responsibility-item">
+                                <h5>🔍 Audit Oversight</h5>
+                                <p>Monitor audit trails, investigate anomalies, and ensure traceability</p>
+                            </div>
+                            <div class="responsibility-item">
+                                <h5>✅ Final Approvals</h5>
+                                <p>Authorize validations and reports for regulatory submission</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function getFinalApprovalsContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>Final Validation Approvals</h2>
+                    <small>Review and approve completed validations for regulatory submission</small>
+                </div>
+                <div class="card-body">
+                    <div id="pendingApprovalsList">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <span>Loading pending approvals...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function getAuditTrailContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>Audit Trail Oversight</h2>
+                    <small>Monitor system activities and investigate compliance issues</small>
+                </div>
+                <div class="card-body">
+                    <div class="audit-overview">
+                        <div class="audit-stats">
+                            <div class="stat-card">
+                                <h4>156</h4>
+                                <p>Events (24h)</p>
+                            </div>
+                            <div class="stat-card">
+                                <h4>23</h4>
+                                <p>Critical Events</p>
+                            </div>
+                            <div class="stat-card">
+                                <h4>5</h4>
+                                <p>Failed Validations</p>
+                            </div>
+                            <div class="stat-card">
+                                <h4>12</h4>
+                                <p>Active Users</p>
+                            </div>
+                        </div>
+                        <div class="audit-actions">
+                            <button class="btn btn-primary" onclick="openAuditModal()">Investigate Audit Logs</button>
+                            <button class="btn btn-warning" onclick="generateComplianceReport()">Compliance Report</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function getUserManagementContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>User Management</h2>
+                    <small>Manage system users and access controls</small>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-primary" onclick="showCreateUserModal()">+ Create New User</button>
+                    <div id="usersList" style="margin-top: 20px;">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <span>Loading users...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create User Modal -->
+            <div id="createUserModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Create New User</h2>
+                        <button class="modal-close" onclick="closeCreateUserModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="createUserForm">
+                            <div class="form-group">
+                                <label for="username">Username *</label>
+                                <input type="text" id="username" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="email">Email *</label>
+                                <input type="email" id="email" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Password *</label>
+                                <input type="password" id="password" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="firstName">First Name</label>
+                                <input type="text" id="firstName">
+                            </div>
+                            <div class="form-group">
+                                <label for="lastName">Last Name</label>
+                                <input type="text" id="lastName">
+                            </div>
+                            <div class="form-group">
+                                <label for="role">Role *</label>
+                                <select id="role" required>
+                                    <option value="">Select role</option>
+                                    <option value="analyst">Analyst</option>
+                                    <option value="reviewer">Reviewer</option>
+                                    <option value="qa">QA</option>
+                                </select>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeCreateUserModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="createUser()">Create User</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // User Management Functions
+    async function loadUsers() {
+        try {
+            const { data: users } = await api.getUsers();
+
+            if (users.length === 0) {
+                document.getElementById('usersList').innerHTML = '<p style="color: #6c757d;">No users yet.</p>';
+                return;
+            }
+
+            let html = '<table class="qa-table"><thead><tr><th>Username</th><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+            users.forEach(u => {
+                html += `
+                    <tr>
+                        <td><strong>${u.username}</strong></td>
+                        <td>${u.email}</td>
+                        <td>${u.first_name} ${u.last_name}</td>
+                        <td><span class="badge role-badge role-${u.role}">${u.role}</span></td>
+                        <td><span class="badge status-active">Active</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="editUser(${u.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deactivateUser(${u.id})">Deactivate</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            document.getElementById('usersList').innerHTML = html;
+        } catch (error) {
+            console.error('Error loading users:', error);
+            document.getElementById('usersList').innerHTML = '<div class="alert alert-danger">Error loading users</div>';
+        }
+    }
+
+    function showCreateUserModal() {
+        document.getElementById('createUserModal').classList.add('show');
+    }
+
+    function closeCreateUserModal() {
+        document.getElementById('createUserModal').classList.remove('show');
+        document.getElementById('createUserForm').reset();
+    }
+
+    async function createUser() {
+        const userData = {
+            username: document.getElementById('username').value,
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value,
+            first_name: document.getElementById('firstName').value,
+            last_name: document.getElementById('lastName').value,
+            role: document.getElementById('role').value
+        };
+
+        try {
+            const { status, data } = await api.createUser(userData);
+            if (status === 201) {
+                Utils.showSuccess('User created successfully!');
+                closeCreateUserModal();
+                loadUsers();
+            } else {
+                Utils.showError(data.error || 'Error creating user');
+            }
+        } catch (error) {
+            Utils.showError('Error creating user');
+        }
+    }
+
+    // Modal Functions
+    function openAuditModal() {
+        document.getElementById('auditModal').classList.add('show');
+        loadAuditLogs();
+    }
+
+    function closeAuditModal() {
+        document.getElementById('auditModal').classList.remove('show');
+    }
+
+    function closeFinalApprovalModal() {
+        document.getElementById('finalApprovalModal').classList.remove('show');
+    }
+
+    function closeDeviationModal() {
+        document.getElementById('deviationModal').classList.remove('show');
+    }
+
+    // Audit Functions
+    async function loadAuditLogs() {
+        try {
+            // Mock audit data - in real implementation, fetch from API
+            const mockAuditLogs = [
+                { id: 1, user: 'analyst1', action: 'submit', object_type: 'project', object_id: 1, details: 'Linearity validation submitted', timestamp: '2024-01-19T10:30:00Z' },
+                { id: 2, user: 'reviewer1', action: 'review', object_type: 'project', object_id: 1, details: 'Parameter review completed', timestamp: '2024-01-19T11:15:00Z' },
+                { id: 3, user: 'analyst2', action: 'login', object_type: 'system', object_id: 0, details: 'User login', timestamp: '2024-01-19T09:00:00Z' },
+            ];
+
+            let html = '<table class="audit-table"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Object</th><th>Details</th></tr></thead><tbody>';
+            mockAuditLogs.forEach(log => {
+                html += `
+                    <tr>
+                        <td>${Utils.formatDate(log.timestamp)}</td>
+                        <td>${log.user}</td>
+                        <td><span class="badge action-${log.action}">${log.action}</span></td>
+                        <td>${log.object_type} ${log.object_id}</td>
+                        <td>${log.details}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            document.getElementById('auditResults').innerHTML = html;
+        } catch (error) {
+            console.error('Error loading audit logs:', error);
+            document.getElementById('auditResults').innerHTML = '<div class="alert alert-danger">Error loading audit logs</div>';
+        }
+    }
+
+    function filterAuditLogs() {
+        Utils.showSuccess('Audit filtering applied');
+        loadAuditLogs();
+    }
+
+    function exportAuditLogs() {
+        Utils.showSuccess('Audit logs exported to CSV');
+    }
+
+    // Placeholder functions for other features
+    function getValidationTemplatesContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>Validation Templates</h2>
+                    <small>Define standardized validation protocols and templates</small>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h4>Coming Soon</h4>
+                        <p>Template management system for standardized validation protocols</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function getAcceptanceCriteriaContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>Acceptance Criteria Management</h2>
+                    <small>Configure ICH Q2 and regulatory acceptance criteria</small>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h4>Coming Soon</h4>
+                        <p>Centralized acceptance criteria configuration</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function getGuidelineManagementContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>Guideline Management</h2>
+                    <small>Manage regulatory guideline versions and SOP mappings</small>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h4>Coming Soon</h4>
+                        <p>Regulatory guideline version control and SOP mapping</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function getDeviationManagementContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>Deviation Management & CAPA</h2>
+                    <small>Track deviations and initiate corrective actions</small>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-warning" onclick="openDeviationModal()">Review Deviations</button>
+                    <div class="alert alert-info" style="margin-top: 20px;">
+                        <h4>Deviation Tracking</h4>
+                        <p>Monitor all validation deviations and CAPA workflows</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function getInspectorModeContent() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <h2>Inspector & Audit Mode</h2>
+                    <small>Read-only access for auditors and inspectors</small>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <h4>🔒 Inspector Mode Active</h4>
+                        <p>This interface provides read-only access for regulatory inspections</p>
+                    </div>
+                    <div class="inspector-actions">
+                        <button class="btn btn-secondary">Generate Validation Package</button>
+                        <button class="btn btn-secondary">Export Compliance Summary</button>
+                        <button class="btn btn-secondary">View System Configuration</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Initialize
+    initializeQADashboard();
+
+    function logout() {
+        api.logout();
+        window.location.href = '/login/';
+    }
+</script>
+{% endblock %}
+</content>

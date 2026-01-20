@@ -1,0 +1,5 @@
+django
+djangorestframework
+pytest
+numpy
+reportlab
