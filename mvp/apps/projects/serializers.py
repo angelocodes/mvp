@@ -17,8 +17,5 @@ class ProjectSerializer(serializers.ModelSerializer):
 class ProjectCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ['method_name', 'method_type', 'technique', 'guideline', 'product_name']
-
-    def create(self, validated_data):
-        validated_data['created_by'] = self.context['request'].user
-        return super().create(validated_data)
+        fields = ['method_name', 'method_type', 'technique', 'guideline', 'product_name', 'created_by']
+        read_only_fields = ['created_by']

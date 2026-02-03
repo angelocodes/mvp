@@ -63,7 +63,54 @@
                 </div>
                 <div class="card-body">
                     <button class="btn btn-success btn-block" onclick="approveProject()">Approve Project</button>
-                    <button class="btn btn-danger btn-block" style="margin-top: 10px;" onclick="rejectProject()">Reject</button>
+                    <button class="btn btn-danger btn-block mt-1" onclick="rejectProject()">Reject</button>
+                </div>
+            </div>
+
+            <div class="card" id="reportCard" style="display: none;">
+                <div class="card-header">
+                    <h3>Validation Report</h3>
+                </div>
+                <div class="card-body">
+                    <p id="reportStatus" style="margin-bottom: 15px; color: #6c757d;">No report generated yet</p>
+                    <button class="btn btn-primary btn-block" id="generateReportBtn" onclick="generateReport()" style="display: none;">Generate Report</button>
+                    <button class="btn btn-success btn-block" id="downloadReportBtn" onclick="downloadReport()" style="display: none; margin-top: 10px;">Download PDF Report</button>
+                </div>
+            </div>
+
+            <div class="card" id="documentsCard" style="display: none;">
+                <div class="card-header">
+                    <h3>Supporting Documents</h3>
+                </div>
+                <div class="card-body">
+                    <div id="documentsList">
+                        <p style="color: #6c757d;">No documents uploaded yet</p>
+                    </div>
+                    <div id="uploadSection" style="margin-top: 15px; display: none;">
+                        <hr style="margin: 15px 0;">
+                        <h4 style="font-size: 14px; margin-bottom: 10px;">Upload New Document</h4>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <select id="docFileType" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="other">Select document type...</option>
+                                <option value="chromatogram">Chromatogram</option>
+                                <option value="instrument_data">Instrument Data</option>
+                                <option value="certificate">Certificate</option>
+                                <option value="sop">SOP/Procedure</option>
+                                <option value="raw_data">Raw Data</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <textarea id="docDescription" placeholder="Description (optional)" 
+                                style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; min-height: 60px;"></textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <input type="file" id="docFileInput" accept=".pdf,.csv,.jpg,.jpeg,.png,.tiff,.txt,.xlsx,.docx" 
+                                style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            <small style="color: #6c757d;">Max file size: 5MB. Allowed: PDF, CSV, Images, TXT, Excel, Word</small>
+                        </div>
+                        <button class="btn btn-primary btn-block" onclick="uploadDocument()" id="uploadDocBtn">Upload Document</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -95,8 +142,15 @@
 
     async function loadProject() {
         try {
-            const { data } = await api.getProject(projectId);
+            // Get both project data and current user info
+            const [{ data }, { data: currentUser }] = await Promise.all([
+                api.getProject(projectId),
+                api.getCurrentUser()
+            ]);
             projectData = data;
+            
+            // Store current user in localStorage for role checking
+            localStorage.setItem('current_user', JSON.stringify(currentUser));
             
             document.getElementById('projectTitle').textContent = data.method_name;
             
@@ -126,33 +180,246 @@
                 `;
             }
             sidebarHTML += '</dl>';
+            
             document.getElementById('sidebarInfo').innerHTML = sidebarHTML;
+            
+            // Handle role-based card visibility
+            handleRoleBasedCards(data, currentUser);
 
             let projectHTML = `
-                <table style="width: 100%;">
+                <table class="info-table">
                     <tr>
-                        <td><strong>Method Type:</strong></td>
+                        <td>Method Type</td>
                         <td>${data.method_type}</td>
                     </tr>
                     <tr>
-                        <td><strong>Guideline:</strong></td>
+                        <td>Guideline</td>
                         <td>${data.guideline}</td>
                     </tr>
                     <tr>
-                        <td><strong>Current Status:</strong></td>
-                        <td><span class="badge status-badge status-${data.status}">${data.status}</span></td>
+                        <td>Current Status</td>
+                        <td><span class="status-badge status-${data.status}">${data.status}</span></td>
                     </tr>
                 </table>
             `;
 
             if (data.status === 'draft') {
-                projectHTML += '<button class="btn btn-primary" style="margin-top: 20px; width: 100%;" onclick="startValidation()">Start Validation</button>';
+                projectHTML += '<button class="btn btn-primary btn-block mt-3" onclick="startValidation()">Start Validation</button>';
             }
 
             document.getElementById('projectInfo').innerHTML = projectHTML;
+            
+            // Handle role-based card visibility
+            handleRoleBasedCards(data, currentUser);
+            
+            // Handle report card visibility
+            handleReportCard(data);
+            
+            // Load documents
+            loadDocuments();
+            
             loadWorkflowSteps();
         } catch (error) {
             console.error('Error loading project:', error);
+        }
+    }
+
+    function handleRoleBasedCards(data, currentUser) {
+        const reviewCard = document.getElementById('reviewCard');
+        const approveCard = document.getElementById('approveCard');
+        
+        const userRole = currentUser.role;
+        const projectStatus = data.status;
+        
+        // Show review card for reviewers/QA when project is in review status
+        if (projectStatus === 'review' && (userRole === 'reviewer' || userRole === 'qa')) {
+            reviewCard.style.display = 'block';
+        } else {
+            reviewCard.style.display = 'none';
+        }
+        
+        // Show approve card for QA when project is reviewed and ready for approval
+        if (projectStatus === 'review' && data.reviewer && userRole === 'qa') {
+            approveCard.style.display = 'block';
+        } else {
+            approveCard.style.display = 'none';
+        }
+    }
+
+    function handleReportCard(data) {
+        const reportCard = document.getElementById('reportCard');
+        const generateBtn = document.getElementById('generateReportBtn');
+        const downloadBtn = document.getElementById('downloadReportBtn');
+        const reportStatus = document.getElementById('reportStatus');
+        
+        // Show report card only for approved projects or projects that can generate reports
+        if (data.status === 'approved' || data.report_generated) {
+            reportCard.style.display = 'block';
+            
+            if (data.report_generated) {
+                reportStatus.textContent = 'Report generated successfully';
+                reportStatus.style.color = '#059669';
+                generateBtn.style.display = 'none';
+                downloadBtn.style.display = 'block';
+            } else if (data.status === 'approved') {
+                reportStatus.textContent = 'Ready to generate validation report';
+                reportStatus.style.color = '#0891b2';
+                generateBtn.style.display = 'block';
+                downloadBtn.style.display = 'none';
+            }
+        } else {
+            reportCard.style.display = 'none';
+        }
+    }
+
+    async function generateReport() {
+        try {
+            const { status, data } = await api.generateReport(projectId);
+            if (status === 200) {
+                Utils.showSuccess('Report generated successfully!');
+                // Refresh project data to update report status
+                loadProject();
+            } else {
+                Utils.showError(data.error || 'Error generating report');
+            }
+        } catch (error) {
+            console.error('Error generating report:', error);
+            Utils.showError('Error generating report');
+        }
+    }
+
+    function downloadReport() {
+        const downloadUrl = api.downloadReport(projectId);
+        // Open in new tab or trigger download
+        window.open(downloadUrl, '_blank');
+        Utils.showSuccess('Downloading report...');
+    }
+
+    async function loadDocuments() {
+        try {
+            const { status, data } = await api.getDocuments(projectId);
+            const documentsCard = document.getElementById('documentsCard');
+            const documentsList = document.getElementById('documentsList');
+            const uploadSection = document.getElementById('uploadSection');
+            
+            // Show documents card for all projects that are not draft
+            if (projectData && projectData.status !== 'draft') {
+                documentsCard.style.display = 'block';
+                
+                // Show upload section only if project is not approved (locked)
+                const userRole = Utils.getUserRole();
+                if (projectData.status !== 'approved' && (userRole === 'analyst' || userRole === 'reviewer' || userRole === 'qa')) {
+                    uploadSection.style.display = 'block';
+                } else {
+                    uploadSection.style.display = 'none';
+                }
+                
+                if (status === 200 && data && data.length > 0) {
+                    let html = '<div class="documents-grid">';
+                    data.forEach(doc => {
+                        const fileSize = (doc.file_size / 1024).toFixed(1);
+                        const sizeUnit = doc.file_size > 1024 ? 'MB' : 'KB';
+                        const displaySize = doc.file_size > 1024 ? (doc.file_size / 1024 / 1024).toFixed(2) + ' MB' : fileSize + ' KB';
+                        
+                        html += `
+                            <div class="document-item">
+                                <div class="document-header">
+                                    <div class="document-info">
+                                        <div class="document-name">${doc.file_name}</div>
+                                        <div class="document-meta">
+                                            <span style="text-transform: capitalize;">${doc.file_type.replace('_', ' ')}</span> • ${displaySize} • Uploaded by ${doc.uploaded_by}
+                                        </div>
+                                        ${doc.description ? `<div class="document-description">${doc.description}</div>` : ''}
+                                        <div class="document-date">${Utils.formatDate(doc.uploaded_at)}</div>
+                                    </div>
+                                    <div class="document-actions">
+                                        <a href="${doc.file_url}" target="_blank" class="btn btn-sm btn-outline-primary">Download</a>
+                                        ${Utils.hasRole('qa') || doc.uploaded_by === Utils.getCurrentUser()?.username ? 
+                                            `<button onclick="deleteDocument(${doc.id})" class="btn btn-sm btn-outline-danger">Delete</button>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    documentsList.innerHTML = html;
+                } else {
+                    documentsList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📄</div><div class="empty-state-title">No Documents</div><div class="empty-state-description">Supporting documents will appear here once uploaded.</div></div>';
+                }
+            } else {
+                documentsCard.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error loading documents:', error);
+        }
+    }
+
+    async function uploadDocument() {
+        const fileInput = document.getElementById('docFileInput');
+        const fileType = document.getElementById('docFileType').value;
+        const description = document.getElementById('docDescription').value;
+        const uploadBtn = document.getElementById('uploadDocBtn');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            Utils.showError('Please select a file to upload');
+            return;
+        }
+        
+        if (fileType === 'other' && document.getElementById('docFileType').selectedIndex === 0) {
+            Utils.showError('Please select a document type');
+            return;
+        }
+        
+        const file = fileInput.files[0];
+        
+        // Validate file size (5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            Utils.showError('File size exceeds 5MB limit');
+            return;
+        }
+        
+        // Show loading state
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = 'Uploading...';
+        
+        try {
+            const { status, data } = await api.uploadDocument(projectId, file, fileType, description);
+            if (status === 201) {
+                Utils.showSuccess('Document uploaded successfully!');
+                // Clear form
+                fileInput.value = '';
+                document.getElementById('docDescription').value = '';
+                document.getElementById('docFileType').selectedIndex = 0;
+                // Reload documents
+                loadDocuments();
+            } else {
+                Utils.showError(data.error || 'Error uploading document');
+            }
+        } catch (error) {
+            console.error('Error uploading document:', error);
+            Utils.showError('Error uploading document. Please try again.');
+        } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Upload Document';
+        }
+    }
+
+    async function deleteDocument(documentId) {
+        if (!confirm('Are you sure you want to delete this document?')) {
+            return;
+        }
+        
+        try {
+            const { status, data } = await api.deleteDocument(projectId, documentId);
+            if (status === 200) {
+                Utils.showSuccess('Document deleted successfully');
+                loadDocuments();
+            } else {
+                Utils.showError(data.error || 'Error deleting document');
+            }
+        } catch (error) {
+            console.error('Error deleting document:', error);
+            Utils.showError('Error deleting document');
         }
     }
 
@@ -167,19 +434,25 @@
         let stepsHTML = '';
         statuses.forEach((status, index) => {
             let stepClass = 'step';
+            let stepIcon = '○';
+            let stepLabel = 'Pending';
             const stepStatusIndex = workflowOrder.indexOf(status);
 
             if (projectData.status === status) {
                 stepClass += ' active'; // Currently working on this step
+                stepIcon = '▶';
+                stepLabel = 'In Progress';
             } else if (currentStatusIndex > stepStatusIndex) {
                 stepClass += ' completed'; // This step is completed
+                stepIcon = '✓';
+                stepLabel = 'Completed ✓';
             }
             // Otherwise, it's pending (default styling)
 
             stepsHTML += `
                 <div class="${stepClass}">
                     <div class="step-name">${steps[index]}</div>
-                    <div class="step-status">${status}</div>
+                    <div class="step-status">${stepLabel}</div>
                 </div>
             `;
         });
@@ -213,11 +486,12 @@
         const hasFailedAttempt = checkForFailedAttempts('linearity');
 
         let formHeader = `
-            <h4>Linearity Test</h4>
-            <div class="alert alert-info">
-                <strong>Instructions:</strong> Enter concentration levels and corresponding instrument responses.
-                Ensure all data is accurate and complete before submission.
-            </div>
+            <div class="data-entry-section">
+                <h4>Linearity Test</h4>
+                <div class="alert alert-info">
+                    <strong>Instructions:</strong> Enter concentration levels and corresponding instrument responses.
+                    Ensure all data is accurate and complete before submission.
+                </div>
         `;
 
         if (hasFailedAttempt) {
@@ -233,20 +507,13 @@
             <div class="form-group">
                 <label>Concentrations (comma-separated) *</label>
                 <input type="text" id="concentrations" placeholder="e.g., 50, 75, 100, 125, 150" required oninput="validateForm()">
-                <small class="text-muted">Enter concentration values in μg/mL</small>
+                <small>Enter concentration values in μg/mL</small>
             </div>
 
             <div class="form-group">
                 <label>Responses (comma-separated) *</label>
                 <input type="text" id="responses" placeholder="e.g., 5000, 7500, 10000, 12500, 15000" required oninput="validateForm()">
-                <small class="text-muted">Enter peak area or instrument response values</small>
-            </div>
-
-            <div class="form-group">
-                <label>Supporting Files (Optional)</label>
-                <input type="file" id="supportingFiles" multiple accept=".pdf,.csv,.jpg,.png,.tiff" onchange="handleFileSelect(event)">
-                <small class="text-muted">Upload chromatograms, instrument PDFs, or CSV exports</small>
-                <div id="fileList"></div>
+                <small>Enter peak area or instrument response values</small>
             </div>
 
             <div class="form-group">
@@ -265,31 +532,14 @@
 
             <button class="btn btn-primary" onclick="submitLinearity()" id="submitBtn" disabled>Submit Linearity</button>
             <div id="linearityResult"></div>
-        `;
+        </div>`;
 
-        return `<div style="margin-top: 20px;">${formHeader}${formContent}</div>`;
-    }
-
-    async function submitLinearity() {
-        const concentrations = document.getElementById('concentrations').value.split(',').map(Number);
-        const responses = document.getElementById('responses').value.split(',').map(Number);
-
-        try {
-            const { status, data } = await api.submitLinearity(projectId, concentrations, responses);
-            if (status === 200) {
-                const result = Utils.parseValidationResponse(data);
-                Utils.displayValidationResult(document.getElementById('linearityResult'), result);
-                Utils.showSuccess('Linearity submitted successfully!');
-                setTimeout(() => loadProject(), 1500);
-            }
-        } catch (error) {
-            Utils.showError('Error submitting linearity');
-        }
+        return formHeader + formContent;
     }
 
     function getAccuracyForm() {
         return `
-            <div style="margin-top: 20px;">
+            <div class="data-entry-section">
                 <h4>Accuracy Test (Recovery Testing)</h4>
                 <div class="alert alert-info">
                     <strong>Instructions:</strong> Test at three concentration levels (80%, 100%, 120%). 
@@ -307,7 +557,7 @@
                 <div class="form-group">
                     <label>Measured Values (comma-separated) *</label>
                     <input type="text" id="measuredValues" placeholder="e.g., 98.5, 99.2, 98.8" required>
-                    <small class="text-muted">Enter recovery % values for each replicate (minimum 3)</small>
+                    <small>Enter recovery % values for each replicate (minimum 3)</small>
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
@@ -339,7 +589,7 @@
 
     function getPrecisionForm() {
         return `
-            <div style="margin-top: 20px;">
+            <div class="data-entry-section">
                 <h4>Precision Test (Repeatability)</h4>
                 <div class="alert alert-info">
                     <strong>Instructions:</strong> Prepare multiple replicates of the standard solution at 100% concentration.
@@ -348,7 +598,7 @@
                 <div class="form-group">
                     <label>Replicate Values (comma-separated) *</label>
                     <input type="text" id="replicateValues" placeholder="e.g., 99.8, 100.2, 99.5, 100.1, 99.9" required>
-                    <small class="text-muted">Enter peak area or response values for each replicate (minimum 6)</small>
+                    <small>Enter peak area or response values for each replicate (minimum 6)</small>
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
@@ -379,7 +629,7 @@
 
     function getLODLOQForm() {
         return `
-            <div style="margin-top: 20px;">
+            <div class="data-entry-section">
                 <h4>LOD/LOQ Determination</h4>
                 <div class="alert alert-info">
                     <strong>Instructions:</strong> Analyze blank samples and calculate LOD/LOQ based on signal-to-noise ratio.
@@ -388,12 +638,12 @@
                 <div class="form-group">
                     <label>Blank Responses (comma-separated) *</label>
                     <input type="text" id="blankResponses" placeholder="e.g., 50, 45, 52, 48, 51" required>
-                    <small class="text-muted">Enter instrument response values for blank samples (minimum 5)</small>
+                    <small>Enter instrument response values for blank samples (minimum 5)</small>
                 </div>
                 <div class="form-group">
                     <label>Method Slope (from Linearity) *</label>
                     <input type="number" id="methodSlope" placeholder="e.g., 100.5" step="0.1" required>
-                    <small class="text-muted">Enter the slope value from the linearity test</small>
+                    <small>Enter the slope value from the linearity test</small>
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
@@ -584,10 +834,13 @@
                 Utils.showSuccess('Linearity submitted successfully! Data is now locked and cannot be modified.');
             } else if (status === 400) {
                 Utils.showError(data.error || 'Error submitting linearity data');
+            } else {
+                console.error('Unexpected status:', status, 'Data:', data);
+                Utils.showError(`Server error (status ${status}): ${data.error || 'Please try again'}`);
             }
         } catch (error) {
             console.error('Error submitting linearity:', error);
-            Utils.showError('Error submitting linearity data. Please try again.');
+            Utils.showError('Network error or server not responding. Please check console for details.');
         }
     }
 

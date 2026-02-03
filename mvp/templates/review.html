@@ -106,6 +106,8 @@
 <script>
     let currentProject = null;
     let parameterReviews = {};
+    let validationSummary = null;
+    let currentParameterName = null;
 
     async function loadProjects() {
         try {
@@ -189,25 +191,37 @@
     async function openReviewModal(projectId) {
         currentProject = null;
         parameterReviews = {};
+        validationSummary = null;
+        currentParameterName = null;
 
         try {
-            const { data: project } = await api.getProject(projectId);
-            currentProject = project;
+            // Load project details and validation summary in parallel
+            const [projectResponse, summaryResponse] = await Promise.all([
+                api.getProject(projectId),
+                api.getValidationSummary(projectId)
+            ]);
 
-            document.getElementById('reviewProjectTitle').textContent = project.method_name;
+            currentProject = projectResponse.data;
+            validationSummary = summaryResponse.data;
 
-            const reviewContent = await buildReviewInterface(project);
+            document.getElementById('reviewProjectTitle').textContent = currentProject.method_name;
+
+            const reviewContent = await buildReviewInterface(currentProject);
             document.getElementById('reviewContent').innerHTML = reviewContent;
+
+            // Load data verification and parameter reviews asynchronously
+            loadDataVerification(currentProject);
+            loadParameterReviews(currentProject);
 
             document.getElementById('reviewModal').classList.add('show');
         } catch (error) {
             console.error('Error loading project for review:', error);
-            Utils.showError('Error loading project details');
+            Utils.showError('Error loading project details: ' + (error.message || 'Unknown error'));
         }
     }
 
     async function buildReviewInterface(project) {
-        let html = `
+        return `
             <div class="review-header">
                 <div class="project-summary">
                     <h3>Project Summary</h3>
@@ -253,148 +267,319 @@
                     </div>
                     <div class="checkbox-group">
                         <label class="checkbox-label">
-                            <input type="checkbox" id="confirmCompliance">
+                            <input type="checkbox" id="confirmCompliance" onchange="onFinalDecisionChange()">
                             I confirm this review ensures ICH Q2(R1) compliance and data integrity
                         </label>
                         <label class="checkbox-label">
-                            <input type="checkbox" id="acknowledgeResponsibility">
+                            <input type="checkbox" id="acknowledgeResponsibility" onchange="onFinalDecisionChange()">
                             I acknowledge my responsibility for this scientific and technical assessment
                         </label>
                     </div>
                 </div>
             </div>
         `;
-
-        // Load data verification and parameter reviews asynchronously
-        setTimeout(() => {
-            loadDataVerification(project);
-            loadParameterReviews(project);
-        }, 100);
-
-        return html;
     }
 
     async function loadDataVerification(project) {
-        // This would load actual validation data in a real implementation
-        const content = `
-            <div class="verification-checklist">
-                <h5>Data Integrity Verification</h5>
-                <div class="checklist-item">
-                    <input type="checkbox" id="verify_sample_prep">
-                    <label for="verify_sample_prep">Sample preparation procedures documented and appropriate</label>
-                </div>
-                <div class="checklist-item">
-                    <input type="checkbox" id="verify_concentrations">
-                    <label for="verify_concentrations">Concentration levels cover appropriate range and include blanks</label>
-                </div>
-                <div class="checklist-item">
-                    <input type="checkbox" id="verify_replicates">
-                    <label for="verify_replicates">Appropriate number of replicates (≥3) for statistical validity</label>
-                </div>
-                <div class="checklist-item">
-                    <input type="checkbox" id="verify_calculations">
-                    <label for="verify_calculations">All calculations performed correctly using validated formulas</label>
-                </div>
-                <div class="checklist-item">
-                    <input type="checkbox" id="verify_outliers">
-                    <label for="verify_outliers">No unexplained outliers or anomalous data points</label>
-                </div>
-            </div>
-        `;
-        document.getElementById('dataVerificationContent').innerHTML = content;
-    }
-
-    async function loadParameterReviews(project) {
-        // Mock parameter data - in real implementation, fetch from API
-        const parameters = [
-            { name: 'Linearity', status: 'PASS', details: 'r² = 0.9998, acceptable intercept' },
-            { name: 'Accuracy', status: 'PASS', details: 'Recovery 98-102%, RSD < 2%' },
-            { name: 'Precision', status: 'PASS', details: 'RSD = 1.2% (repeatability)' },
-            { name: 'LOD/LOQ', status: 'PASS', details: 'LOD = 0.05 μg/mL, LOQ = 0.15 μg/mL' }
-        ];
-
-        let html = '<div class="parameter-review-grid">';
-        parameters.forEach((param, index) => {
-            const statusClass = param.status.toLowerCase();
-            html += `
-                <div class="parameter-card">
-                    <div class="parameter-header">
-                        <h5>${param.name}</h5>
-                        <span class="badge status-${statusClass}">${param.status}</span>
+        try {
+            const content = `
+                <div class="verification-checklist">
+                    <h5>Data Integrity Verification</h5>
+                    <div class="checklist-item">
+                        <input type="checkbox" id="verify_sample_prep">
+                        <label for="verify_sample_prep">Sample preparation procedures documented and appropriate</label>
                     </div>
-                    <div class="parameter-details">
-                        <p>${param.details}</p>
+                    <div class="checklist-item">
+                        <input type="checkbox" id="verify_concentrations">
+                        <label for="verify_concentrations">Concentration levels cover appropriate range and include blanks</label>
                     </div>
-                    <div class="parameter-actions">
-                        <button class="btn btn-sm btn-outline-primary" onclick="reviewParameter('${param.name}', ${index})">
-                            Review Details
-                        </button>
-                        <span class="review-status" id="review-status-${index}">Not Reviewed</span>
+                    <div class="checklist-item">
+                        <input type="checkbox" id="verify_replicates">
+                        <label for="verify_replicates">Appropriate number of replicates (≥3) for statistical validity</label>
+                    </div>
+                    <div class="checklist-item">
+                        <input type="checkbox" id="verify_calculations">
+                        <label for="verify_calculations">All calculations performed correctly using validated formulas</label>
+                    </div>
+                    <div class="checklist-item">
+                        <input type="checkbox" id="verify_outliers">
+                        <label for="verify_outliers">No unexplained outliers or anomalous data points</label>
                     </div>
                 </div>
             `;
-        });
-        html += '</div>';
-
-        document.getElementById('parameterReviewsContent').innerHTML = html;
+            document.getElementById('dataVerificationContent').innerHTML = content;
+        } catch (error) {
+            console.error('Error loading data verification:', error);
+            document.getElementById('dataVerificationContent').innerHTML = 
+                '<div class="alert alert-danger">Error loading verification checklist</div>';
+        }
     }
 
-    function reviewParameter(paramName, paramIndex) {
+    async function loadParameterReviews(project) {
+        try {
+            if (!validationSummary || !validationSummary.validation_steps) {
+                document.getElementById('parameterReviewsContent').innerHTML = 
+                    '<div class="alert alert-warning">No validation data available for this project</div>';
+                return;
+            }
+
+            const steps = validationSummary.validation_steps;
+            const parameters = [];
+
+            // Map validation steps to review cards
+            if (steps.linearity) {
+                const linearityData = steps.linearity.data || {};
+                parameters.push({
+                    name: 'Linearity',
+                    key: 'linearity',
+                    status: steps.linearity.passed ? 'PASS' : 'FAIL',
+                    details: steps.linearity.completed 
+                        ? `r² = ${(linearityData.r_squared || 0).toFixed(4)}, slope = ${(linearityData.slope || 0).toFixed(2)}`
+                        : 'Not completed',
+                    completed: steps.linearity.completed,
+                    data: linearityData
+                });
+            }
+
+            if (steps.accuracy) {
+                const accuracyData = steps.accuracy.data || {};
+                parameters.push({
+                    name: 'Accuracy',
+                    key: 'accuracy',
+                    status: steps.accuracy.passed ? 'PASS' : 'FAIL',
+                    details: steps.accuracy.completed
+                        ? `Recovery: ${(accuracyData.mean_recovery || 0).toFixed(1)}%, RSD: ${(accuracyData.rsd || 0).toFixed(1)}%`
+                        : 'Not completed',
+                    completed: steps.accuracy.completed,
+                    data: accuracyData
+                });
+            }
+
+            if (steps.precision) {
+                const precisionData = steps.precision.data || {};
+                parameters.push({
+                    name: 'Precision',
+                    key: 'precision',
+                    status: steps.precision.passed ? 'PASS' : 'FAIL',
+                    details: steps.precision.completed
+                        ? `RSD: ${(precisionData.rsd || 0).toFixed(1)}%, Mean: ${(precisionData.mean || 0).toFixed(2)}`
+                        : 'Not completed',
+                    completed: steps.precision.completed,
+                    data: precisionData
+                });
+            }
+
+            if (steps.lod_loq) {
+                const lodloqData = steps.lod_loq.data || {};
+                parameters.push({
+                    name: 'LOD/LOQ',
+                    key: 'lod_loq',
+                    status: steps.lod_loq.passed ? 'PASS' : 'FAIL',
+                    details: steps.lod_loq.completed
+                        ? `LOD: ${(lodloqData.lod || 0).toFixed(3)}, LOQ: ${(lodloqData.loq || 0).toFixed(3)}`
+                        : 'Not completed',
+                    completed: steps.lod_loq.completed,
+                    data: lodloqData
+                });
+            }
+
+            let html = '<div class="parameter-review-grid">';
+            parameters.forEach((param, index) => {
+                const statusClass = param.status === 'PASS' ? 'pass' : (param.completed ? 'fail' : 'pending');
+                const hasBeenReviewed = parameterReviews[param.name];
+                const reviewStatusClass = hasBeenReviewed ? 'reviewed' : 'not-reviewed';
+                const reviewStatusText = hasBeenReviewed 
+                    ? `${hasBeenReviewed.decision.toUpperCase()}` 
+                    : 'Not Reviewed';
+
+                html += `
+                    <div class="parameter-card ${statusClass}">
+                        <div class="parameter-header">
+                            <h5>${param.name}</h5>
+                            <span class="badge status-${statusClass}">${param.status}</span>
+                        </div>
+                        <div class="parameter-details">
+                            <p>${param.details}</p>
+                        </div>
+                        <div class="parameter-actions">
+                            <button class="btn btn-sm btn-outline-primary" onclick="reviewParameter('${param.name}', ${index})" ${!param.completed ? 'disabled' : ''}>
+                                ${hasBeenReviewed ? 'Edit Review' : 'Review Details'}
+                            </button>
+                            <span class="review-status ${reviewStatusClass}" id="review-status-${index}">${reviewStatusText}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+
+            document.getElementById('parameterReviewsContent').innerHTML = html;
+        } catch (error) {
+            console.error('Error loading parameter reviews:', error);
+            document.getElementById('parameterReviewsContent').innerHTML = 
+                '<div class="alert alert-danger">Error loading parameter reviews</div>';
+        }
+    }
+
+    async function reviewParameter(paramName, paramIndex) {
+        currentParameterName = paramName;
         const modal = document.getElementById('parameterModal');
         document.getElementById('parameterTitle').textContent = `Review: ${paramName}`;
 
-        // Mock parameter data - in real implementation, fetch actual validation data
-        const paramData = {
-            name: paramName,
-            rawData: {
-                concentrations: [25, 50, 75, 100, 125],
-                responses: [2450, 4980, 7520, 9950, 12480]
-            },
-            calculations: {
-                slope: 99.84,
-                intercept: 12.5,
-                r_squared: 0.9998,
-                passed: true
-            },
-            criteria: "ICH Q2(R1): r² ≥ 0.99, acceptable intercept"
-        };
+        try {
+            // Show loading state
+            document.getElementById('parameterContent').innerHTML = '<div class="loading">Loading parameter data...</div>';
+            modal.classList.add('show');
 
-        const content = `
-            <div class="parameter-review-details">
-                <div class="data-section">
-                    <h5>Raw Data</h5>
+            // Get the parameter data from validation summary
+            const paramKey = paramName.toLowerCase().replace('/', '_');
+            const stepData = validationSummary?.validation_steps?.[paramKey === 'lod_loq' ? 'lod_loq' : paramKey];
+
+            if (!stepData || !stepData.data) {
+                document.getElementById('parameterContent').innerHTML = 
+                    '<div class="alert alert-warning">No data available for this parameter</div>';
+                return;
+            }
+
+            const data = stepData.data;
+            let content = '<div class="parameter-review-details">';
+
+            // Raw data section
+            content += '<div class="data-section"><h5>Raw Data</h5>';
+            
+            if (paramName === 'Linearity' && data.concentrations && data.responses) {
+                content += `
                     <div class="data-tables">
                         <table class="data-table">
                             <thead>
                                 <tr><th>Concentration</th><th>Response</th></tr>
                             </thead>
                             <tbody>
-                                ${paramData.rawData.concentrations.map((conc, i) =>
-                                    `<tr><td>${conc}</td><td>${paramData.rawData.responses[i]}</td></tr>`
+                                ${data.concentrations.map((conc, i) =>
+                                    `<tr><td>${conc}</td><td>${data.responses[i] || '-'}</td></tr>`
                                 ).join('')}
                             </tbody>
                         </table>
                     </div>
-                </div>
-
-                <div class="calculations-section">
-                    <h5>Statistical Results</h5>
-                    <div class="metrics-display">
-                        <div class="metric">Slope: <strong>${paramData.calculations.slope.toFixed(4)}</strong></div>
-                        <div class="metric">Intercept: <strong>${paramData.calculations.intercept.toFixed(2)}</strong></div>
-                        <div class="metric">r²: <strong>${paramData.calculations.r_squared.toFixed(4)}</strong></div>
+                `;
+            } else if (paramName === 'Accuracy' && data.measured_values) {
+                content += `
+                    <div class="data-tables">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Replicate</th><th>Measured Value</th></tr>
+                            </thead>
+                            <tbody>
+                                ${data.measured_values.map((val, i) =>
+                                    `<tr><td>${i + 1}</td><td>${val}</td></tr>`
+                                ).join('')}
+                            </tbody>
+                        </table>
                     </div>
-                </div>
+                `;
+            } else if (paramName === 'Precision' && data.replicate_values) {
+                content += `
+                    <div class="data-tables">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Replicate</th><th>Value</th></tr>
+                            </thead>
+                            <tbody>
+                                ${data.replicate_values.map((val, i) =>
+                                    `<tr><td>${i + 1}</td><td>${val}</td></tr>`
+                                ).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (paramName === 'LOD/LOQ' && data.blank_responses) {
+                content += `
+                    <div class="data-tables">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Blank #</th><th>Response</th></tr>
+                            </thead>
+                            <tbody>
+                                ${data.blank_responses.map((val, i) =>
+                                    `<tr><td>${i + 1}</td><td>${val}</td></tr>`
+                                ).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            content += '</div>';
 
-                <div class="criteria-section">
-                    <h5>Acceptance Criteria</h5>
-                    <p>${paramData.criteria}</p>
-                </div>
-            </div>
-        `;
+            // Calculations section
+            content += '<div class="calculations-section"><h5>Statistical Results</h5><div class="metrics-display">';
+            
+            if (paramName === 'Linearity') {
+                content += `
+                    <div class="metric">Slope: <strong>${(data.slope || 0).toFixed(4)}</strong></div>
+                    <div class="metric">Intercept: <strong>${(data.intercept || 0).toFixed(2)}</strong></div>
+                    <div class="metric">r²: <strong>${(data.r_squared || 0).toFixed(4)}</strong></div>
+                `;
+            } else if (paramName === 'Accuracy') {
+                content += `
+                    <div class="metric">Level: <strong>${data.level || '-'}%</strong></div>
+                    <div class="metric">Mean Recovery: <strong>${(data.mean_recovery || 0).toFixed(1)}%</strong></div>
+                    <div class="metric">RSD: <strong>${(data.rsd || 0).toFixed(1)}%</strong></div>
+                `;
+            } else if (paramName === 'Precision') {
+                content += `
+                    <div class="metric">Mean: <strong>${(data.mean || 0).toFixed(2)}</strong></div>
+                    <div class="metric">RSD: <strong>${(data.rsd || 0).toFixed(1)}%</strong></div>
+                    <div class="metric">Replicates: <strong>${data.replicate_values?.length || 0}</strong></div>
+                `;
+            } else if (paramName === 'LOD/LOQ') {
+                content += `
+                    <div class="metric">LOD: <strong>${(data.lod || 0).toFixed(3)}</strong></div>
+                    <div class="metric">LOQ: <strong>${(data.loq || 0).toFixed(3)}</strong></div>
+                    <div class="metric">Slope: <strong>${(data.slope || 0).toFixed(4)}</strong></div>
+                `;
+            }
+            content += '</div></div>';
 
-        document.getElementById('parameterContent').innerHTML = content;
-        modal.classList.add('show');
+            // Criteria section
+            content += '<div class="criteria-section">';
+            let criteria = '';
+            if (paramName === 'Linearity') {
+                criteria = 'ICH Q2(R1): r² ≥ 0.99, acceptable intercept';
+            } else if (paramName === 'Accuracy') {
+                criteria = 'ICH Q2(R1): Recovery 98-102%, RSD < 2%';
+            } else if (paramName === 'Precision') {
+                criteria = 'ICH Q2(R1): RSD ≤ 2% (repeatability)';
+            } else if (paramName === 'LOD/LOQ') {
+                criteria = 'ICH Q2(R1): S/N ≥ 3 for LOD, S/N ≥ 10 for LOQ';
+            }
+            content += `<h5>Acceptance Criteria</h5><p>${criteria}</p></div>`;
+
+            // Pass/Fail indicator
+            const passed = stepData.passed;
+            content += `
+                <div class="validation-result ${passed ? 'pass' : 'fail'}">
+                    <h5>Validation Result: ${passed ? '✅ PASS' : '❌ FAIL'}</h5>
+                </div>
+            `;
+
+            content += '</div>';
+            document.getElementById('parameterContent').innerHTML = content;
+
+            // Pre-fill if already reviewed
+            if (parameterReviews[paramName]) {
+                document.getElementById('parameterDecision').value = parameterReviews[paramName].decision;
+                document.getElementById('parameterComments').value = parameterReviews[paramName].comments;
+                onParameterDecisionChange();
+            } else {
+                document.getElementById('parameterDecision').value = '';
+                document.getElementById('parameterComments').value = '';
+                document.getElementById('deviationSection').style.display = 'none';
+            }
+
+        } catch (error) {
+            console.error('Error loading parameter details:', error);
+            document.getElementById('parameterContent').innerHTML = 
+                '<div class="alert alert-danger">Error loading parameter details: ' + (error.message || 'Unknown error') + '</div>';
+        }
     }
 
     function onParameterDecisionChange() {
@@ -418,28 +603,24 @@
         }
 
         // Store parameter review
-        const paramName = document.getElementById('parameterTitle').textContent.replace('Review: ', '');
-        parameterReviews[paramName] = {
+        parameterReviews[currentParameterName] = {
             decision,
             comments,
             timestamp: new Date().toISOString()
         };
 
-        Utils.showSuccess(`Parameter ${paramName} reviewed successfully`);
+        Utils.showSuccess(`Parameter ${currentParameterName} reviewed successfully`);
         closeParameterModal();
 
-        // Update review status
+        // Update review status display
         updateReviewStatuses();
     }
 
     function updateReviewStatuses() {
-        Object.keys(parameterReviews).forEach((paramName, index) => {
-            const statusElement = document.getElementById(`review-status-${index}`);
-            if (statusElement) {
-                statusElement.textContent = 'Reviewed';
-                statusElement.className = 'review-status reviewed';
-            }
-        });
+        // Refresh the parameter cards to show updated review status
+        if (currentProject) {
+            loadParameterReviews(currentProject);
+        }
     }
 
     function onFinalDecisionChange() {
@@ -462,6 +643,10 @@
             return;
         }
 
+        const submitBtn = document.getElementById('submitReviewBtn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner"></span> Submitting...';
+
         try {
             const reviewData = {
                 final_decision: finalDecision,
@@ -471,19 +656,26 @@
                 timestamp: new Date().toISOString()
             };
 
-            // In real implementation, call API
-            // await api.submitReview(currentProject.id, reviewData);
+            const response = await api.submitDetailedReview(currentProject.id, reviewData);
 
-            Utils.showSuccess('Project review submitted successfully!');
-
-            // For demo, just close modal and refresh
-            setTimeout(() => {
-                closeReviewModal();
-                loadProjects();
-            }, 1500);
+            if (response.status === 200) {
+                Utils.showSuccess(response.data.message || 'Project review submitted successfully!');
+                
+                setTimeout(() => {
+                    closeReviewModal();
+                    loadProjects();
+                }, 1500);
+            } else {
+                Utils.showError(response.data.error || 'Error submitting review');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Submit Final Review';
+            }
 
         } catch (error) {
-            Utils.showError('Error submitting review');
+            console.error('Error submitting review:', error);
+            Utils.showError('Error submitting review: ' + (error.message || 'Unknown error'));
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Submit Final Review';
         }
     }
 
@@ -503,4 +695,3 @@
     loadProjects();
 </script>
 {% endblock %}
-</content>

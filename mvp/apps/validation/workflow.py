@@ -57,9 +57,9 @@ def advance_workflow(project, step, passed):
     if step in workflow_order:
         index = workflow_order.index(step)
         if passed and index + 1 < len(workflow_order):
-            project.status = workflow_order[index + 1].upper()
+            project.status = workflow_order[index + 1]
         elif passed:
             project.status = 'review'
         else:
-            project.status = step.upper()  # stay, but blocked
+            project.status = step  # stay, but blocked
         project.save()

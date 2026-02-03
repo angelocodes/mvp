@@ -54,7 +54,7 @@ def admin(request):
     """Admin page"""
     if request.user.role != 'qa':
         return render(request, '403.html', status=403)
-    return render(request, 'admin.html')
+    return render(request, 'admin_panel.html')
 
 
 @login_required(login_url='login')
@@ -73,3 +73,9 @@ def re_analysis(request):
         return render(request, 're-analysis.html')
     except Project.DoesNotExist:
         return render(request, '403.html', status=403)
+
+
+@login_required(login_url='login')
+def settings(request):
+    """User settings page"""
+    return render(request, 'settings.html')

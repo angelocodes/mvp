@@ -501,22 +501,27 @@
     // Audit Functions
     async function loadAuditLogs() {
         try {
-            // Mock audit data - in real implementation, fetch from API
-            const mockAuditLogs = [
-                { id: 1, user: 'analyst1', action: 'submit', object_type: 'project', object_id: 1, details: 'Linearity validation submitted', timestamp: '2024-01-19T10:30:00Z' },
-                { id: 2, user: 'reviewer1', action: 'review', object_type: 'project', object_id: 1, details: 'Parameter review completed', timestamp: '2024-01-19T11:15:00Z' },
-                { id: 3, user: 'analyst2', action: 'login', object_type: 'system', object_id: 0, details: 'User login', timestamp: '2024-01-19T09:00:00Z' },
-            ];
+            const { status, data } = await api.getAuditLogs();
+            
+            if (status !== 200 || !data || data.length === 0) {
+                document.getElementById('auditResults').innerHTML = '<div class="alert alert-info">No audit logs found</div>';
+                return;
+            }
 
             let html = '<table class="audit-table"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Object</th><th>Details</th></tr></thead><tbody>';
-            mockAuditLogs.forEach(log => {
+            data.forEach(log => {
+                const details = log.details ? JSON.parse(log.details) : {};
+                const detailText = typeof details === 'object' ? 
+                    Object.entries(details).map(([k, v]) => `${k}: ${v}`).join(', ') : 
+                    log.details;
+                
                 html += `
                     <tr>
                         <td>${Utils.formatDate(log.timestamp)}</td>
-                        <td>${log.user}</td>
+                        <td>${log.user_username || log.user}</td>
                         <td><span class="badge action-${log.action}">${log.action}</span></td>
-                        <td>${log.object_type} ${log.object_id}</td>
-                        <td>${log.details}</td>
+                        <td>${log.object_type} #${log.object_id}</td>
+                        <td>${detailText || 'No details'}</td>
                     </tr>
                 `;
             });
@@ -534,6 +539,32 @@
     }
 
     function exportAuditLogs() {
+        // Get the current audit data from the table and export as CSV
+        const table = document.querySelector('.audit-table');
+        if (!table) {
+            Utils.showError('No audit data to export');
+            return;
+        }
+        
+        let csv = 'Time,User,Action,Object,Details\n';
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            const rowData = Array.from(cells).map(cell => `"${cell.textContent.replace(/"/g, '""')}"`);
+            csv += rowData.join(',') + '\n';
+        });
+        
+        // Download CSV
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.setAttribute('hidden', '');
+        a.setAttribute('href', url);
+        a.setAttribute('download', 'audit_logs.csv');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
         Utils.showSuccess('Audit logs exported to CSV');
     }
 

@@ -2,6 +2,52 @@
  * Utility functions for the frontend
  */
 
+// Global helper functions for toast notifications and loading states
+function showToast(message, type = 'info') {
+    const toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) return;
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const icons = {
+        'success': '✅',
+        'error': '❌',
+        'warning': '⚠️',
+        'info': 'ℹ️'
+    };
+    
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || '•'}</span>
+        <span class="toast-message">${message}</span>
+    `;
+    
+    toastContainer.appendChild(toast);
+    
+    // Trigger animation
+    setTimeout(() => toast.classList.add('show'), 10);
+    
+    // Remove after 4 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+function showLoading() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+    }
+}
+
+function hideLoading() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
 class Utils {
     static showNotification(message, type = 'info') {
         const notification = document.createElement('div');
@@ -34,17 +80,17 @@ class Utils {
 
     static getStatusColor(status) {
         const colors = {
-            'draft': '#6c757d',
-            'linearity': '#0dcaf0',
-            'accuracy': '#0d6efd',
-            'precision': '#6366f1',
-            'lod_loq': '#8b5cf6',
-            'review': '#fd7e14',
-            'approved': '#198754',
-            'PASS': '#198754',
-            'FAIL': '#dc3545'
+            'draft': '#64748b',
+            'linearity': '#0891b2',
+            'accuracy': '#0d9488',
+            'precision': '#023223',
+            'lod_loq': '#f97316',
+            'review': '#d97706',
+            'approved': '#059669',
+            'PASS': '#059669',
+            'FAIL': '#e11d48'
         };
-        return colors[status] || '#6c757d';
+        return colors[status] || '#64748b';
     }
 
     static stringToColor(str) {
@@ -117,7 +163,7 @@ class Utils {
         }
     }
 
-    static generateChart(canvasId, labels, data, label, backgroundColor = '#0d6efd') {
+    static generateChart(canvasId, labels, data, label, backgroundColor = '#0d9488') {
         const ctx = document.getElementById(canvasId);
         if (!ctx) return;
 

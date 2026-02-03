@@ -1,0 +1,702 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}User Settings - {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>
+            <span class="page-icon">⚙️</span>
+            User Settings
+        </h1>
+        <p class="page-description">Manage your profile, password, and view your account activity</p>
+    </div>
+
+    <div class="row">
+        <!-- Left Column: Profile & Password -->
+        <div class="col-8">
+            <!-- Profile Information Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h2>
+                        <span class="card-icon">👤</span>
+                        Profile Information
+                    </h2>
+                    <span class="badge badge-role">{{ user.get_role_display }}</span>
+                </div>
+                <div class="card-body">
+                    <form id="profileForm" class="form-horizontal">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="form-group">
+                                    <label for="username">Username</label>
+                                    <input type="text" id="username" name="username" class="form-control" value="{{ user.username }}" readonly>
+                                    <small class="form-text text-muted">Username cannot be changed</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="form-group">
+                                    <label for="email">Email Address *</label>
+                                    <input type="email" id="email" name="email" class="form-control" value="{{ user.email }}" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="form-group">
+                                    <label for="first_name">First Name</label>
+                                    <input type="text" id="first_name" name="first_name" class="form-control" value="{{ user.first_name }}">
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="form-group">
+                                    <label for="last_name">Last Name</label>
+                                    <input type="text" id="last_name" name="last_name" class="form-control" value="{{ user.last_name }}">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Role</label>
+                            <input type="text" class="form-control" value="{{ user.get_role_display }}" readonly>
+                            <small class="form-text text-muted">Contact QA admin to change your role</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Member Since</label>
+                            <input type="text" class="form-control" value="{{ user.date_joined|date:'F d, Y' }}" readonly>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Last Login</label>
+                            <input type="text" class="form-control" value="{% if user.last_login %}{{ user.last_login|date:'F d, Y H:i' }}{% else %}Never{% endif %}" readonly>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <span class="btn-icon">💾</span>
+                                Save Changes
+                            </button>
+                            <button type="reset" class="btn btn-secondary">Reset</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Password Change Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h2>
+                        <span class="card-icon">🔒</span>
+                        Change Password
+                    </h2>
+                </div>
+                <div class="card-body">
+                    <form id="passwordForm" class="form-horizontal">
+                        <div class="form-group">
+                            <label for="current_password">Current Password *</label>
+                            <input type="password" id="current_password" name="current_password" class="form-control" required>
+                            <small class="form-text text-muted">Enter your current password to verify your identity</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="new_password">New Password *</label>
+                            <input type="password" id="new_password" name="new_password" class="form-control" required minlength="8">
+                            <small class="form-text text-muted">Minimum 8 characters. Use a mix of letters, numbers, and symbols.</small>
+                            <div class="password-strength" id="passwordStrength"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="confirm_password">Confirm New Password *</label>
+                            <input type="password" id="confirm_password" name="confirm_password" class="form-control" required>
+                            <small class="form-text text-muted" id="passwordMatch">Passwords must match</small>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <span class="btn-icon">🔐</span>
+                                Update Password
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Statistics & Activity -->
+        <div class="col-4">
+            <!-- Account Statistics Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h2>
+                        <span class="card-icon">📊</span>
+                        Account Statistics
+                    </h2>
+                </div>
+                <div class="card-body">
+                    <div id="userStats" class="stats-container">
+                        <div class="loading-spinner">
+                            <div class="spinner"></div>
+                            <p>Loading statistics...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>
+                        <span class="card-icon">📝</span>
+                        Recent Activity
+                    </h2>
+                </div>
+                <div class="card-body">
+                    <div id="activityLog" class="activity-container">
+                        <div class="loading-spinner">
+                            <div class="spinner"></div>
+                            <p>Loading activity...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .page-header {
+        margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .page-icon {
+        font-size: 2rem;
+    }
+
+    .page-description {
+        color: var(--gray-500);
+        margin: 0;
+    }
+
+    .card-icon {
+        margin-right: 0.5rem;
+    }
+
+    .badge-role {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        color: white;
+        padding: 0.375rem 0.875rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+
+    .form-horizontal .row {
+        margin-bottom: 0;
+    }
+
+    .form-control[readonly] {
+        background-color: var(--gray-50);
+        cursor: not-allowed;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--gray-200);
+    }
+
+    .password-strength {
+        margin-top: 0.5rem;
+        height: 4px;
+        background: var(--gray-200);
+        border-radius: 2px;
+        overflow: hidden;
+        display: none;
+    }
+
+    .password-strength.show {
+        display: block;
+    }
+
+    .password-strength-bar {
+        height: 100%;
+        width: 0;
+        transition: all 0.3s ease;
+    }
+
+    .password-strength-bar.weak {
+        width: 33%;
+        background: var(--danger);
+    }
+
+    .password-strength-bar.medium {
+        width: 66%;
+        background: var(--warning);
+    }
+
+    .password-strength-bar.strong {
+        width: 100%;
+        background: var(--success);
+    }
+
+    .password-strength-text {
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+        color: var(--gray-500);
+    }
+
+    .stats-container {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        background: var(--gray-50);
+        border-radius: var(--radius);
+        border-left: 4px solid var(--primary);
+        transition: all 0.2s ease;
+    }
+
+    .stat-item:hover {
+        transform: translateX(4px);
+        background: var(--info-light);
+    }
+
+    .stat-icon {
+        font-size: 1.5rem;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .stat-content {
+        flex: 1;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--gray-800);
+        line-height: 1;
+    }
+
+    .stat-label {
+        font-size: 0.875rem;
+        color: var(--gray-500);
+        margin-top: 0.25rem;
+    }
+
+    .activity-container {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
+    .activity-item {
+        display: flex;
+        gap: 0.75rem;
+        padding: 1rem 0;
+        border-bottom: 1px solid var(--gray-100);
+    }
+
+    .activity-item:last-child {
+        border-bottom: none;
+    }
+
+    .activity-icon {
+        font-size: 1.25rem;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--gray-50);
+        border-radius: var(--radius);
+        flex-shrink: 0;
+    }
+
+    .activity-icon.create { background: var(--success-light); }
+    .activity-icon.update { background: var(--info-light); }
+    .activity-icon.delete { background: var(--danger-light); }
+    .activity-icon.submit { background: var(--primary-light); color: white; }
+    .activity-icon.review { background: var(--warning-light); }
+    .activity-icon.approve { background: var(--success-light); }
+    .activity-icon.login { background: var(--gray-100); }
+    .activity-icon.logout { background: var(--gray-100); }
+
+    .activity-content {
+        flex: 1;
+    }
+
+    .activity-action {
+        font-weight: 600;
+        color: var(--gray-800);
+        margin-bottom: 0.25rem;
+    }
+
+    .activity-details {
+        font-size: 0.875rem;
+        color: var(--gray-500);
+        margin-bottom: 0.25rem;
+    }
+
+    .activity-time {
+        font-size: 0.75rem;
+        color: var(--gray-400);
+    }
+
+    .loading-spinner {
+        text-align: center;
+        padding: 2rem;
+        color: var(--gray-500);
+    }
+
+    .loading-spinner .spinner {
+        margin: 0 auto 1rem;
+    }
+
+    .empty-state-small {
+        text-align: center;
+        padding: 2rem;
+        color: var(--gray-500);
+    }
+
+    .empty-state-small .empty-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+        opacity: 0.5;
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: var(--radius);
+        margin-bottom: 1rem;
+        display: none;
+    }
+
+    .alert.show {
+        display: flex;
+    }
+
+    @media (max-width: 768px) {
+        .col-8, .col-4 {
+            flex: 0 0 100%;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load user stats
+        loadUserStats();
+        
+        // Load activity log
+        loadActivityLog();
+        
+        // Profile form submission
+        document.getElementById('profileForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                email: document.getElementById('email').value,
+                first_name: document.getElementById('first_name').value,
+                last_name: document.getElementById('last_name').value
+            };
+            
+            try {
+                showLoading();
+                const response = await api.updateProfile(formData);
+                
+                if (response.status === 200) {
+                    showToast('Profile updated successfully', 'success');
+                } else {
+                    showToast(response.data.error || 'Failed to update profile', 'error');
+                }
+            } catch (error) {
+                showToast('Error updating profile', 'error');
+                console.error('Profile update error:', error);
+            } finally {
+                hideLoading();
+            }
+        });
+        
+        // Password form submission
+        document.getElementById('passwordForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const currentPassword = document.getElementById('current_password').value;
+            const newPassword = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            
+            // Validation
+            if (newPassword !== confirmPassword) {
+                showToast('New passwords do not match', 'error');
+                return;
+            }
+            
+            if (newPassword.length < 8) {
+                showToast('Password must be at least 8 characters', 'error');
+                return;
+            }
+            
+            try {
+                showLoading();
+                const response = await api.changePassword({
+                    current_password: currentPassword,
+                    new_password: newPassword
+                });
+                
+                if (response.status === 200) {
+                    showToast('Password changed successfully', 'success');
+                    document.getElementById('passwordForm').reset();
+                    document.getElementById('passwordStrength').classList.remove('show');
+                } else {
+                    showToast(response.data.error || 'Failed to change password', 'error');
+                }
+            } catch (error) {
+                showToast('Error changing password', 'error');
+                console.error('Password change error:', error);
+            } finally {
+                hideLoading();
+            }
+        });
+        
+        // Password strength indicator
+        document.getElementById('new_password').addEventListener('input', function(e) {
+            const password = e.target.value;
+            const strengthDiv = document.getElementById('passwordStrength');
+            
+            if (password.length === 0) {
+                strengthDiv.classList.remove('show');
+                return;
+            }
+            
+            strengthDiv.classList.add('show');
+            
+            let strength = 'weak';
+            let score = 0;
+            
+            if (password.length >= 8) score++;
+            if (password.match(/[a-z]/) && password.match(/[A-Z]/)) score++;
+            if (password.match(/\d/)) score++;
+            if (password.match(/[^a-zA-Z\d]/)) score++;
+            
+            if (score >= 3) strength = 'strong';
+            else if (score >= 2) strength = 'medium';
+            
+            strengthDiv.innerHTML = `
+                <div class="password-strength-bar ${strength}"></div>
+                <div class="password-strength-text">Password strength: ${strength}</div>
+            `;
+        });
+        
+        // Confirm password match indicator
+        document.getElementById('confirm_password').addEventListener('input', function(e) {
+            const newPassword = document.getElementById('new_password').value;
+            const confirmPassword = e.target.value;
+            const matchText = document.getElementById('passwordMatch');
+            
+            if (confirmPassword.length === 0) {
+                matchText.textContent = 'Passwords must match';
+                matchText.style.color = 'var(--gray-500)';
+            } else if (newPassword === confirmPassword) {
+                matchText.textContent = '✓ Passwords match';
+                matchText.style.color = 'var(--success)';
+            } else {
+                matchText.textContent = '✗ Passwords do not match';
+                matchText.style.color = 'var(--danger)';
+            }
+        });
+    });
+    
+    async function loadUserStats() {
+        try {
+            const response = await api.getUserStats();
+            
+            if (response.status === 200) {
+                renderUserStats(response.data);
+            } else {
+                document.getElementById('userStats').innerHTML = `
+                    <div class="empty-state-small">
+                        <div class="empty-icon">⚠️</div>
+                        <p>Failed to load statistics</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading stats:', error);
+            document.getElementById('userStats').innerHTML = `
+                <div class="empty-state-small">
+                    <div class="empty-icon">⚠️</div>
+                    <p>Error loading statistics</p>
+                </div>
+            `;
+        }
+    }
+    
+    function renderUserStats(stats) {
+        const container = document.getElementById('userStats');
+        container.innerHTML = `
+            <div class="stat-item">
+                <div class="stat-icon">📁</div>
+                <div class="stat-content">
+                    <div class="stat-value">${stats.projects_created || 0}</div>
+                    <div class="stat-label">Projects Created</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon">✅</div>
+                <div class="stat-content">
+                    <div class="stat-value">${stats.validations_submitted || 0}</div>
+                    <div class="stat-label">Validations Submitted</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon">👁️</div>
+                <div class="stat-content">
+                    <div class="stat-value">${stats.projects_reviewed || 0}</div>
+                    <div class="stat-label">Projects Reviewed</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon">📝</div>
+                <div class="stat-content">
+                    <div class="stat-value">${stats.total_activity || 0}</div>
+                    <div class="stat-label">Total Activities</div>
+                </div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-icon">📅</div>
+                <div class="stat-content">
+                    <div class="stat-value">${stats.days_active || 0}</div>
+                    <div class="stat-label">Days Active</div>
+                </div>
+            </div>
+        `;
+    }
+    
+    async function loadActivityLog() {
+        try {
+            // Get current user to get user_id
+            const userResponse = await api.getCurrentUser();
+            if (userResponse.status !== 200) {
+                throw new Error('Failed to get current user');
+            }
+            
+            const userId = userResponse.data.id;
+            
+            // Load activity from audit logs (filter by user)
+            const response = await api.makeRequest(`/audit/?user_id=${userId}`);
+            
+            if (response.status === 200 && response.data.length > 0) {
+                renderActivityLog(response.data.slice(0, 20)); // Show last 20 activities
+            } else {
+                document.getElementById('activityLog').innerHTML = `
+                    <div class="empty-state-small">
+                        <div class="empty-icon">📝</div>
+                        <p>No recent activity</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading activity:', error);
+            document.getElementById('activityLog').innerHTML = `
+                <div class="empty-state-small">
+                    <div class="empty-icon">⚠️</div>
+                    <p>Error loading activity</p>
+                </div>
+            `;
+        }
+    }
+    
+    function renderActivityLog(activities) {
+        const container = document.getElementById('activityLog');
+        
+        const actionIcons = {
+            'create': '🆕',
+            'update': '📝',
+            'delete': '🗑️',
+            'submit': '📤',
+            'review': '👁️',
+            'approve': '✅',
+            'login': '🔑',
+            'logout': '🚪'
+        };
+        
+        const actionLabels = {
+            'create': 'Created',
+            'update': 'Updated',
+            'delete': 'Deleted',
+            'submit': 'Submitted',
+            'review': 'Reviewed',
+            'approve': 'Approved',
+            'login': 'Logged in',
+            'logout': 'Logged out'
+        };
+        
+        container.innerHTML = activities.map(activity => {
+            const date = new Date(activity.timestamp);
+            const formattedDate = date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            let details = '';
+            try {
+                const detailObj = JSON.parse(activity.details);
+                if (detailObj.project_name) {
+                    details = `Project: ${detailObj.project_name}`;
+                } else if (detailObj.target_username) {
+                    details = `User: ${detailObj.target_username}`;
+                }
+            } catch (e) {
+                details = activity.details || '';
+            }
+            
+            return `
+                <div class="activity-item">
+                    <div class="activity-icon ${activity.action}">
+                        ${actionIcons[activity.action] || '•'}
+                    </div>
+                    <div class="activity-content">
+                        <div class="activity-action">
+                            ${actionLabels[activity.action] || activity.action} 
+                            ${activity.object_type}
+                        </div>
+                        ${details ? `<div class="activity-details">${details}</div>` : ''}
+                        <div class="activity-time">${formattedDate}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+</script>
+{% endblock %}

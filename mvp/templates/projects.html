@@ -79,7 +79,7 @@
             const { data: projects } = await api.getProjects();
             
             if (projects.length === 0) {
-                document.getElementById('projectsList').innerHTML = '<p style="color: #6c757d;">No projects yet. Create one to get started.</p>';
+                document.getElementById('projectsList').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📁</div><div class="empty-state-title">No Projects Yet</div><div class="empty-state-description">Create your first validation project to get started with method validation.</div></div>';
                 return;
             }
 

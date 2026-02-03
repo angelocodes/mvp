@@ -7,28 +7,67 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}Analytical Method Validation MVP{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <span class="loading-text">Loading...</span>
+    </div>
+
     {% if user.is_authenticated %}
-    <header>
+    <header class="site-header">
         <div class="container">
-            <nav>
-                <div class="logo">📊 Validation MVP</div>
-                <ul class="nav-links">
-                    <li><a href="/">Dashboard</a></li>
-                    <li><a href="/projects/">Projects</a></li>
-                    {% if user.role == 'reviewer' or user.role == 'qa' %}
-                    <li><a href="/review/">Reviews</a></li>
-                    {% endif %}
-                    {% if user.role == 'qa' %}
-                    <li><a href="/admin/">Admin</a></li>
-                    {% endif %}
-                </ul>
+            <nav class="main-nav">
+                <div class="nav-brand">
+                    <a href="/" class="logo-link">
+                        <span class="logo-icon">📊</span>
+                        <span class="logo-text">Validation MVP</span>
+                    </a>
+                </div>
+
+                <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
+                    <span class="nav-toggle-bar"></span>
+                    <span class="nav-toggle-bar"></span>
+                    <span class="nav-toggle-bar"></span>
+                </button>
+
+                <div class="nav-menu" id="navMenu">
+                    <ul class="nav-links">
+                        <li class="nav-item">
+                            <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">Dashboard</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="/projects/" class="nav-link {% if '/projects/' in request.path %}active{% endif %}">Projects</a>
+                        </li>
+                        {% if user.role == 'reviewer' or user.role == 'qa' %}
+                        <li class="nav-item">
+                            <a href="/review/" class="nav-link {% if '/review/' in request.path %}active{% endif %}">Reviews</a>
+                        </li>
+                        {% endif %}
+                        {% if user.role == 'qa' %}
+                        <li class="nav-item">
+                            <a href="/admin_panel/" class="nav-link {% if '/admin_panel/' in request.path %}active{% endif %}">Admin</a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </div>
+
                 <div class="user-menu">
-                    <span id="userName">Welcome, {{ user.username }} ({{ user.role }})</span>
-                    <form method="post" action="/accounts/logout/" style="display: inline;">
+                    <a href="/settings/" class="nav-link settings-link {% if '/settings/' in request.path %}active{% endif %}" title="Settings">
+                        <span class="nav-icon">⚙️</span>
+                        <span class="settings-text">Settings</span>
+                    </a>
+                    <div class="user-info">
+                        <span class="user-name">{{ user.username }}</span>
+                        <span class="user-role">{{ user.role }}</span>
+                    </div>
+                    <form method="post" action="/accounts/logout/" class="logout-form">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-secondary btn-sm">Logout</button>
+                        <button type="submit" class="btn btn-logout">
+                            <span class="btn-icon">🚪</span>
+                            <span class="btn-text">Logout</span>
+                        </button>
                     </form>
                 </div>
             </nav>
@@ -36,12 +75,44 @@
     </header>
     {% endif %}
 
-    <main>
+    <main class="main-content">
         {% block content %}{% endblock %}
     </main>
 
-    <script src="{% static 'js/api.js' %}"></script>
-    <script src="{% static 'js/utils.js' %}"></script>
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-left">
+                    <p class="version-info">Version 1.0.0 | MVP Build</p>
+                </div>
+                <div class="footer-right">
+                    <a href="/help/" class="footer-link">Help</a>
+                    <a href="/docs/" class="footer-link">Documentation</a>
+                    <a href="/privacy/" class="footer-link">Privacy</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="{% static 'js/api.js' %}?v=2"></script>
+    <script src="{% static 'js/utils.js' %}?v=2"></script>
+    <script>
+        // Mobile navigation toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const navToggle = document.getElementById('navToggle');
+            const navMenu = document.getElementById('navMenu');
+            
+            if (navToggle && navMenu) {
+                navToggle.addEventListener('click', function() {
+                    const isExpanded = navToggle.getAttribute('aria-expanded') === 'true';
+                    navToggle.setAttribute('aria-expanded', !isExpanded);
+                    navMenu.classList.toggle('nav-menu--open');
+                });
+            }
+        });
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
